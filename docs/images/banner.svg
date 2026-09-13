@@ -1,0 +1,52 @@
+<svg viewBox="0 0 1200 280" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f6f8fa"/>
+      <stop offset="100%" stop-color="#eaf6f9"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="280" rx="28" fill="url(#bg)"/>
+
+  <!-- logo mark: 4 dots like the orange brand mark -->
+  <g transform="translate(70,90)">
+    <circle cx="0" cy="0" r="16" fill="#f4823a"/>
+    <circle cx="40" cy="0" r="16" fill="#f4823a"/>
+    <circle cx="0" cy="40" r="16" fill="#f4823a"/>
+    <circle cx="40" cy="40" r="16" fill="#f4823a"/>
+  </g>
+
+  <text x="150" y="120" font-family="Verdana, Geneva, sans-serif" font-size="56" font-weight="800" fill="#22303f">MyTraining</text>
+  <text x="150" y="160" font-family="Verdana, Geneva, sans-serif" font-size="22" font-weight="600" fill="#2ab6d1">exams &amp; live rooms, Socrative-flavored</text>
+
+  <!-- pill buttons decor -->
+  <rect x="150" y="195" width="190" height="42" rx="21" fill="#e3f7fb"/>
+  <text x="180" y="222" font-family="Verdana, Geneva, sans-serif" font-size="16" font-weight="700" fill="#1c9db6">Guardar y salir</text>
+
+  <rect x="360" y="195" width="200" height="42" rx="21" fill="#f4823a"/>
+  <text x="390" y="222" font-family="Verdana, Geneva, sans-serif" font-size="16" font-weight="700" fill="#ffffff">Crear sala en vivo</text>
+
+  <!-- right side: mini question card -->
+  <g transform="translate(700,40)">
+    <rect x="0" y="0" width="440" height="210" rx="18" fill="#ffffff" stroke="#e6e9ee"/>
+    <text x="24" y="40" font-family="Verdana, Geneva, sans-serif" font-size="16" font-weight="800" fill="#22303f">1. What's the longest river?</text>
+
+    <circle cx="34" cy="72" r="12" fill="#e7ebef"/>
+    <text x="30" y="77" font-family="Verdana, Geneva, sans-serif" font-size="12" font-weight="700" fill="#55606c">A</text>
+    <text x="56" y="77" font-family="Verdana, Geneva, sans-serif" font-size="14" fill="#22303f">The Mississippi River</text>
+
+    <circle cx="34" cy="102" r="12" fill="#e7ebef"/>
+    <text x="30" y="107" font-family="Verdana, Geneva, sans-serif" font-size="12" font-weight="700" fill="#55606c">B</text>
+    <text x="56" y="107" font-family="Verdana, Geneva, sans-serif" font-size="14" fill="#22303f">The Nile River</text>
+
+    <circle cx="34" cy="132" r="12" fill="#4caf50"/>
+    <text x="30" y="137" font-family="Verdana, Geneva, sans-serif" font-size="12" font-weight="700" fill="#ffffff">D</text>
+    <text x="56" y="137" font-family="Verdana, Geneva, sans-serif" font-size="14" font-weight="700" fill="#22303f">The Amazon River</text>
+
+    <circle cx="34" cy="162" r="12" fill="#e7ebef"/>
+    <text x="30" y="167" font-family="Verdana, Geneva, sans-serif" font-size="12" font-weight="700" fill="#55606c">E</text>
+    <text x="56" y="167" font-family="Verdana, Geneva, sans-serif" font-size="14" fill="#22303f">The Yangtze River</text>
+
+    <rect x="380" y="16" width="42" height="32" rx="8" fill="#2ab6d1"/>
+    <text x="393" y="38" font-family="Verdana, Geneva, sans-serif" font-size="16" fill="#ffffff">✎</text>
+  </g>
+</svg>
