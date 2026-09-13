@@ -7,7 +7,7 @@
 <div id="waiting-screen"
      class="position-fixed top-0 start-0 w-100 h-100 bg-dark bg-opacity-90
             d-flex flex-column justify-content-center align-items-center text-white"
-     style="z-index:9999;{% if session.status == 'in_progress' %}display:none!important;{% endif %}">
+     style="z-index:9999;{% if session.status in ['in_progress', 'RUNNING'] %}display:none!important;{% endif %}">
   <div class="spinner-border text-primary mb-3" style="width:4rem;height:4rem;" role="status"></div>
   <h2 class="fw-bold">Esperando al profesor…</h2>
   <p class="text-light">Sala: <strong class="text-warning">{{ session.session_code }}</strong></p>
@@ -75,12 +75,13 @@
       <div class="d-flex justify-content-between align-items-center">
         <small class="fw-bold" id="question-indicator">Pregunta 1 de {{ questions_data|length }}</small>
         <div class="d-flex align-items-center gap-2">
-          <span id="answeredBadge" class="badge bg-success-subtle text-success border border-success-subtle" style="font-size:.75rem;">0 guardadas</span>
+          <span id="answeredBadge" class="badge bg-success-subtle text-success border border-success-subtle" style="font-size:.75rem;">0 de {{ questions_data|length }} respondidas</span>
           <div class="progress" style="width:200px;height:10px;">
             <div id="exam-progress-bar" class="progress-bar bg-success" style="width:0%;"></div>
           </div>
         </div>
       </div>
+      <div id="step-dots" class="d-flex flex-wrap gap-1 mt-2"></div>
     </div>
     {% endif %}
 
@@ -205,17 +206,20 @@
         {% endfor %}
 
         {# ── Navegación ── #}
-        <div class="d-flex justify-content-between mt-4 pt-3 border-top" id="navButtons">
+        <div class="d-flex justify-content-between align-items-center mt-4 pt-3 border-top" id="navButtons">
           <button type="button" class="btn btn-outline-secondary" id="btn-prev"
                   onclick="prevQuestion()" disabled>
             <i class="bi bi-chevron-left me-1"></i>Anterior
           </button>
+          <span id="pending-hint" class="text-muted small d-none">
+            <i class="bi bi-info-circle me-1"></i>Faltan preguntas por responder
+          </span>
           <button type="button" class="btn btn-primary" id="btn-next"
                   onclick="nextQuestion()">
             Siguiente<i class="bi bi-chevron-right ms-1"></i>
           </button>
           <button type="submit" class="btn btn-success btn-lg d-none" id="btn-submit"
-                  onclick="submitRealtimeAnswer()">
+                  onclick="return handleSubmitClick(event)">
             <i class="bi bi-send-fill me-1"></i>Enviar Examen
           </button>
         </div>
@@ -252,7 +256,6 @@ let isPaused     = false;
 let activePollId = null;
 let pollVoted    = false;
 let savedAnswers = {};
-let savedCount   = 0;
 
 /* ── helpers overlay ─────────────────────────────────────────────────────── */
 function hideWaiting() {
@@ -288,7 +291,7 @@ socket.on('exam_paused',    ()   => showPause());
 socket.on('exam_resumed',   ()   => hidePause());
 
 socket.on('session_state', data => {
-  if (data.status === 'in_progress') hideWaiting();
+  if (data.status === 'in_progress' || data.status === 'RUNNING') hideWaiting();
   if (data.status === 'PAUSED') showPause();
   if ((data.mode === 'teacher_paced' || data.mode === 'instant_feedback') && data.question)
     showQuestionById(data.question.id);
@@ -306,8 +309,6 @@ socket.on('feedback', data => {
 //here
 socket.on('answer_saved', data => {
   markSaved(data.question_id);
-  savedCount = data.answered_count;
-  updateAnsweredBadge();
   updateStepView();
 });
 
@@ -320,14 +321,12 @@ socket.on('exam_error', data => showToast(data.message, 'danger'));
 socket.on('saved_progress', data => {
     
   savedAnswers = data.answers || {};
-    
+
   Object.keys(savedAnswers).forEach(qid => {
     restoreAnswer(parseInt(qid), savedAnswers[qid]);
     markSaved(parseInt(qid));
   });
-    
-  savedCount = Object.keys(savedAnswers).length;
-  updateAnsweredBadge();
+
   updateStepView();
   goToFirstUnanswered();
 });
@@ -452,9 +451,61 @@ function markSaved(questionId) {
   const el = document.getElementById(`savedMark-${questionId}`);
   if (el) el.classList.remove('d-none');
 }
-function updateAnsweredBadge() {
+function updateAnsweredBadge(count) {
   const el = document.getElementById('answeredBadge');
-  if (el) el.textContent = `${savedCount} guardada${savedCount!==1?'s':''}`;
+  if (el) el.textContent = `${count} de ${TOTAL_Q} respondida${TOTAL_Q!==1?'s':''}`;
+}
+
+/* ── Estado de respuesta calculado directamente del DOM ──────────────────────
+   No depende de la confirmación async del servidor: así el botón "Enviar"
+   nunca queda bloqueado esperando un round-trip que nunca llega si el
+   estudiante está en la última pregunta y no hay "Siguiente" que lo dispare. */
+function isStepAnswered(step) {
+  const type = step.dataset.questionType;
+  if (type === 'multiple_choice' || type === 'true_false' || type === 'video') {
+    return !!step.querySelector('input[type="radio"]:checked');
+  }
+  if (type === 'multiple_select') {
+    return step.querySelectorAll('input[type="checkbox"]:checked').length > 0;
+  }
+  if (type === 'matching') {
+    const selects = [...step.querySelectorAll('select[data-pair-id]')];
+    return selects.length > 0 && selects.every(s => s.value);
+  }
+  if (type === 'ordering') {
+    const inputs = [...step.querySelectorAll('input.ordering-input')];
+    return inputs.length > 0 && inputs.every(i => i.value !== '');
+  }
+  if (type === 'open_answer') {
+    const ta = step.querySelector('textarea');
+    return !!(ta && ta.value.trim().length > 0);
+  }
+  return false;
+}
+
+function getAnsweredStates() {
+  return [...document.querySelectorAll('.question-step')].map(isStepAnswered);
+}
+
+/* ── Puntos clicables: de un vistazo se ve qué preguntas faltan,
+   sin importar si el orden es aleatorio o va "saltando" preguntas. ── */
+function renderDots(answeredStates) {
+  const container = document.getElementById('step-dots');
+  if (!container) return;
+  container.innerHTML = answeredStates.map((answered, i) => {
+    const classes = ['step-dot'];
+    if (answered) classes.push('is-answered');
+    if (i === currentStep) classes.push('is-current');
+    const label = `Pregunta ${i + 1}${answered ? ' (respondida)' : ' (sin responder)'}`;
+    return `<button type="button" class="${classes.join(' ')}" title="${label}" onclick="goToStep(${i})">${i + 1}</button>`;
+  }).join('');
+}
+
+function goToStep(i) {
+  if (isPaused || i === currentStep) return;
+  submitRealtimeAnswer();
+  currentStep = i;
+  updateStepView();
 }
 
 /* ── Recolectar respuesta del step actual ────────────────────────────────── */
@@ -589,26 +640,56 @@ function updateStepView() {
   if (TOTAL_Q === 0) return;
 
   clampCurrentStep();
-    
+
   document.querySelectorAll('.question-step').forEach((el, i) => {
     el.style.display = (i === currentStep) ? 'block' : 'none';
   });
-  
-  const isPaced  = EXAM_MODE === 'teacher_paced';
-  const isLast   = currentStep === TOTAL_Q - 1;
-  const allAnswered = savedCount >= TOTAL_Q;
-  const btnPrev  = document.getElementById('btn-prev');
-  const btnNext  = document.getElementById('btn-next');
-  const btnSub   = document.getElementById('btn-submit');
+
+  const isPaced      = EXAM_MODE === 'teacher_paced';
+  const isLast       = currentStep === TOTAL_Q - 1;
+  const answeredStates = getAnsweredStates();
+  const answeredCount  = answeredStates.filter(Boolean).length;
+  const allAnswered    = answeredCount >= TOTAL_Q;
+
+  const btnPrev = document.getElementById('btn-prev');
+  const btnNext = document.getElementById('btn-next');
+  const btnSub  = document.getElementById('btn-submit');
+  const hint    = document.getElementById('pending-hint');
+
   if (btnPrev) btnPrev.disabled = (currentStep === 0 || isPaced);
   if (btnNext) btnNext.classList.toggle('d-none', isLast || isPaced);
+
+  // El botón de enviar es visible en la última pregunta SIEMPRE (no solo
+  // cuando el servidor ya confirmó todas las respuestas), o desde cualquier
+  // pregunta si ya se respondió todo. Solo queda deshabilitado, nunca oculto,
+  // así el estudiante no tiene que "devolverse" para verlo aparecer.
   if (btnSub) {
-      btnSub.classList.toggle('d-none',  !allAnswered || isPaced);
-      }
+    const reachable = isLast || allAnswered;
+    btnSub.classList.toggle('d-none', !reachable || isPaced);
+    btnSub.disabled = !allAnswered;
+    btnSub.title = allAnswered ? '' : 'Responde todas las preguntas antes de enviar';
+  }
+  if (hint) hint.classList.toggle('d-none', !isLast || allAnswered);
+
   const ind = document.getElementById('question-indicator');
   if (ind) ind.textContent = `Pregunta ${currentStep+1} de ${TOTAL_Q}`;
   const bar = document.getElementById('exam-progress-bar');
   if (bar) bar.style.width = `${Math.round((currentStep+1)/TOTAL_Q*100)}%`;
+
+  updateAnsweredBadge(answeredCount);
+  renderDots(answeredStates);
+}
+
+function handleSubmitClick(evt) {
+  if (isPaused) { evt.preventDefault(); return false; }
+  const answeredCount = getAnsweredStates().filter(Boolean).length;
+  if (answeredCount < TOTAL_Q) {
+    evt.preventDefault();
+    showToast('Aún tienes preguntas sin responder.', 'warning');
+    return false;
+  }
+  submitRealtimeAnswer();
+  return true; // deja continuar el envío normal del formulario
 }
 
 
@@ -631,12 +712,12 @@ function goToFirstUnanswered() {
 }
     
 /* ── Polling de estado (fallback) ────────────────────────────────────────── */
-{% if session.status != 'in_progress' %}
+{% if session.status not in ['in_progress', 'RUNNING'] %}
 function checkStatus() {
   fetch(`/session/status/${SESSION_ID}`)
     .then(r => r.json())
     .then(d => {
-      if (d.status === 'in_progress') { hideWaiting(); clearInterval(_si); }
+      if (d.status === 'in_progress' || d.status === 'RUNNING') { hideWaiting(); clearInterval(_si); }
       if (d.status === 'PAUSED') showPause();
     }).catch(()=>{});
 }
@@ -645,6 +726,11 @@ checkStatus();
 {% else %}
 hideWaiting();
 {% endif %}
+
+// Refleja de inmediato en los puntos/insignia/botón cualquier respuesta que
+// el estudiante marque, sin esperar la confirmación async del servidor.
+document.getElementById('exam-form')?.addEventListener('change', updateStepView);
+document.getElementById('exam-form')?.addEventListener('input', updateStepView);
 
 updateStepView();
 </script>
