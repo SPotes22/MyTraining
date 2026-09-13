@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block title %}Crear sala - {{ exam.title }}{% endblock %}
+
+{% block content %}
+<div class="mx-auto" style="max-width: 640px;">
+
+  <div class="text-muted small fw-semibold mb-2">
+    <a href="{{ url_for('exams.edit_exam_builder', exam_id=exam.id) }}" class="text-muted text-decoration-none">
+      <i class="bi bi-arrow-left me-1"></i>Volver al examen
+    </a>
+  </div>
+
+  <h1 class="h3 fw-bold text-slate-800 mb-1">Crear sala</h1>
+  <p class="text-muted mb-4">{{ exam.title }}</p>
+
+  <form method="post">
+    <div class="soc-section-label">Orden de preguntas</div>
+    <div class="d-grid gap-2 mb-4">
+      <label class="socrative-card p-3 d-flex align-items-start gap-3" style="cursor: pointer;">
+        <input type="radio" name="question_order" value="original" class="form-check-input mt-1" checked>
+        <span>
+          <span class="d-flex align-items-center gap-2 fw-bold text-slate-800">
+            <i class="bi bi-list-ol text-primary"></i>Orden original
+          </span>
+          <span class="text-muted small d-block mt-1">Los estudiantes responden las preguntas en el mismo orden del constructor.</span>
+        </span>
+      </label>
+      <label class="socrative-card p-3 d-flex align-items-start gap-3" style="cursor: pointer;">
+        <input type="radio" name="question_order" value="random" class="form-check-input mt-1">
+        <span>
+          <span class="d-flex align-items-center gap-2 fw-bold text-slate-800">
+            <i class="bi bi-shuffle text-primary"></i>Aleatorio
+          </span>
+          <span class="text-muted small d-block mt-1">Cada estudiante recibe las preguntas en un orden distinto.</span>
+        </span>
+      </label>
+    </div>
+
+    <div class="soc-section-label">Estudiantes esperados</div>
+    <input name="expected_students" type="number" min="0" class="form-control mb-4" placeholder="Opcional, para calcular avance de la sala">
+
+    <button class="soc-btn-pill soc-btn-pill-orange w-100 justify-content-center py-2">
+      <i class="bi bi-play-fill"></i>Crear sala
+    </button>
+  </form>
+</div>
+{% endblock %}

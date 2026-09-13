@@ -1,0 +1,236 @@
+import sys
+from pathlib import Path
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from app.config import Config
+from app import create_app
+from app.extensions import db
+from app.models import Bank, Exam, ExamAttempt, ExamQuestion, ExamSession, Question, User
+from app.services.exam_builder import duplicate_question, save_question_payload
+
+
+@pytest.fixture()
+def app_ctx(tmp_path):
+    Config.SQLALCHEMY_DATABASE_URI = f"sqlite:///{tmp_path/'test.db'}"
+    app = create_app()
+    app.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
+    with app.app_context():
+        db.drop_all()
+        db.create_all()
+        teacher = User(username='Teacher', email='teacher@example.com', role='instructor')
+        teacher.set_password('secret')
+        other = User(username='Other', email='other@example.com', role='instructor')
+        other.set_password('secret')
+        student = User(username='Student', email='student@example.com', role='student')
+        student.set_password('secret')
+        db.session.add_all([teacher, other, student])
+        db.session.commit()
+        yield app, teacher, other, student
+
+
+def login(client, email, password='secret'):
+    return client.post('/login', data={'email': email, 'password': password})
+
+
+def make_bank(teacher):
+    bank = Bank(name=f'Banco {teacher.id}', created_by=teacher.id)
+    db.session.add(bank)
+    db.session.commit()
+    return bank
+
+
+def test_feedback_limit_and_question_type_change(app_ctx):
+    app, teacher, *_ = app_ctx
+    with app.app_context():
+        bank = make_bank(teacher)
+        q = Question(bank_id=bank.id, statement='Temp')
+        db.session.add(q)
+        with pytest.raises(ValueError):
+            save_question_payload(q, {
+                'statement': 'Pregunta', 'question_type': 'multiple_choice', 'default_points': '1',
+                'feedback_text': 'x' * 3001, 'options[]': ['A', 'B'], 'correct_options[]': ['0']
+            })
+        class Form(dict):
+            def getlist(self, key): return self.get(key, [])
+        save_question_payload(q, Form({'statement': '¿Verdadero?', 'question_type': 'true_false', 'default_points': '2', 'feedback_text': 'x' * 3000, 'true_false_correct': 'false'}))
+        db.session.commit()
+        assert q.question_type == 'true_false'
+        assert len(q.options) == 2
+        assert q.default_points == 2
+
+
+def test_exam_builder_add_duplicate_order_and_random_validation(app_ctx):
+    app, teacher, *_ = app_ctx
+    with app.app_context():
+        bank = make_bank(teacher)
+        q1 = Question(bank_id=bank.id, statement='Q1', default_points=1)
+        q2 = Question(bank_id=bank.id, statement='Q2', default_points=5)
+        exam = Exam(title='Exam', instructor_id=teacher.id)
+        db.session.add_all([q1, q2, exam]); db.session.commit()
+        exam_id, q1_id, q2_id = exam.id, q1.id, q2.id
+    c = app.test_client(); login(c, 'teacher@example.com')
+    assert c.post(f'/instructor/exam/{exam_id}/add-bank', data={'question_ids': [str(q1_id), str(q2_id)]}).status_code == 302
+    with app.app_context():
+        assert ExamQuestion.query.filter_by(exam_id=exam_id).count() == 2
+        # Cada pregunta agregada en el mismo POST debe quedar con un order_index
+        # distinto (columna "P1", "P2"... en la Matriz de Resultados), no todas en 1.
+        order_indexes = sorted(eq.order_index for eq in ExamQuestion.query.filter_by(exam_id=exam_id).all())
+        assert order_indexes == [1, 2]
+    assert c.post(f'/instructor/exam/{exam_id}/question/{q1_id}/duplicate').status_code == 302
+    with app.app_context():
+        assert ExamQuestion.query.filter_by(exam_id=exam_id).count() == 3
+    c.post(f'/instructor/exam/{exam_id}/add-bank', data={'random_count': 99})
+
+
+def test_exam_builder_bulk_add_many_questions_have_sequential_order(app_ctx):
+    """Reproduce el escenario real: agregar 4+ preguntas de golpe desde el banco
+    no debe dejarlas todas con el mismo order_index (rompía la Matriz de Resultados,
+    mostrando todas las columnas como 'P1')."""
+    app, teacher, *_ = app_ctx
+    with app.app_context():
+        bank = make_bank(teacher)
+        questions = [Question(bank_id=bank.id, statement=f'Q{i}', default_points=1) for i in range(4)]
+        exam = Exam(title='Exam Bulk', instructor_id=teacher.id)
+        db.session.add_all(questions + [exam])
+        db.session.commit()
+        exam_id = exam.id
+        question_ids = [q.id for q in questions]
+
+    c = app.test_client(); login(c, 'teacher@example.com')
+    res = c.post(
+        f'/instructor/exam/{exam_id}/add-bank',
+        data={'question_ids': [str(qid) for qid in question_ids]}
+    )
+    assert res.status_code == 302
+
+    with app.app_context():
+        order_indexes = sorted(eq.order_index for eq in ExamQuestion.query.filter_by(exam_id=exam_id).all())
+        assert order_indexes == [1, 2, 3, 4]
+
+
+def test_authorization_and_session_controls(app_ctx):
+    app, teacher, other, *_ = app_ctx
+    with app.app_context():
+        exam = Exam(title='Private', instructor_id=teacher.id)
+        db.session.add(exam); db.session.commit()
+        exam_id = exam.id
+    c = app.test_client(); login(c, 'other@example.com')
+    assert c.get(f'/instructor/exam/{exam_id}/edit').status_code == 403
+    c = app.test_client(); login(c, 'teacher@example.com')
+    r = c.post(f'/instructor/session/configure/{exam_id}', data={'question_order': 'random'}, follow_redirects=False)
+    assert r.status_code == 302
+    with app.app_context():
+        session = ExamSession.query.filter_by(exam_id=exam_id).first()
+        assert session.question_order == 'random'
+        assert c.post(f'/instructor/session/{session.id}/pause').status_code == 302
+        db.session.refresh(session)
+        assert session.status == 'PAUSED'
+
+
+def test_bulk_delete_questions(app_ctx):
+    app, teacher, *_ = app_ctx
+    with app.app_context():
+        bank = make_bank(teacher)
+        q1 = Question(bank_id=bank.id, statement='Bulk Q1')
+        q2 = Question(bank_id=bank.id, statement='Bulk Q2')
+        db.session.add_all([q1, q2])
+        db.session.commit()
+        q1_id, q2_id = q1.id, q2.id
+
+    c = app.test_client()
+    login(c, 'teacher@example.com')
+    res = c.post('/instructor/questions/bulk-delete', data={'question_ids[]': [str(q1_id), str(q2_id)]}, follow_redirects=True)
+    assert res.status_code == 200
+
+    with app.app_context():
+        assert Question.query.filter(Question.id.in_([q1_id, q2_id])).count() == 0
+
+
+def test_class_folder_management(app_ctx):
+    from app.models import ExamClass
+    app, teacher, *_ = app_ctx
+    with app.app_context():
+        exam = Exam(title='Exam In Folder', instructor_id=teacher.id)
+        db.session.add(exam)
+        db.session.commit()
+        exam_id = exam.id
+
+    c = app.test_client()
+    login(c, 'teacher@example.com')
+    res = c.post('/instructor/classes', data={'name': 'Física 101', 'subject': 'Física'}, follow_redirects=True)
+    assert res.status_code == 200
+
+    with app.app_context():
+        cls = ExamClass.query.filter_by(name='Física 101').first()
+        assert cls is not None
+        cls_id = cls.id
+
+    c.post(f'/instructor/class/{cls_id}/assign', data={'exam_id': str(exam_id)})
+    with app.app_context():
+        cls = ExamClass.query.get(cls_id)
+        assert len(cls.exams) == 1
+
+    c.post(f'/instructor/class/{cls_id}/remove-exam/{exam_id}')
+    with app.app_context():
+        cls = ExamClass.query.get(cls_id)
+        assert len(cls.exams) == 0
+
+    c.post(f'/instructor/class/{cls_id}/delete')
+    with app.app_context():
+        assert db.session.get(ExamClass, cls_id) is None
+
+
+def test_exam_soft_delete_restore_and_library_tabs(app_ctx):
+    app, teacher, *_ = app_ctx
+    with app.app_context():
+        exam1 = Exam(title='Examen Activo 1', instructor_id=teacher.id)
+        exam2 = Exam(title='Examen Para Borrar', instructor_id=teacher.id)
+        db.session.add_all([exam1, exam2])
+        db.session.commit()
+        exam1_id, exam2_id = exam1.id, exam2.id
+
+    c = app.test_client()
+    login(c, 'teacher@example.com')
+
+    # View library: both should be active initially
+    res = c.get('/instructor/exams')
+    assert res.status_code == 200
+    assert b'Examen Activo 1' in res.data
+    assert b'Examen Para Borrar' in res.data
+
+    # Soft delete exam2
+    del_res = c.post(f'/instructor/exam/{exam2_id}/delete', follow_redirects=True)
+    assert del_res.status_code == 200
+
+    # Check in DB: exam2 still exists, but active is False
+    with app.app_context():
+        e2 = db.session.get(Exam, exam2_id)
+        assert e2 is not None
+        assert e2.active is False
+
+        e1 = db.session.get(Exam, exam1_id)
+        assert e1 is not None
+        assert e1.active is True
+
+    # Check library page renders both in their respective containers
+    res = c.get('/instructor/exams')
+    assert res.status_code == 200
+    assert b'Examen Activo 1' in res.data
+    assert b'Examen Para Borrar' in res.data
+
+    # Restore exam2
+    res_restore = c.post(f'/instructor/exam/{exam2_id}/restore', follow_redirects=True)
+    assert res_restore.status_code == 200
+    with app.app_context():
+        e2 = db.session.get(Exam, exam2_id)
+        assert e2.active is True
+
+    # Permanent delete exam2
+    res_perm = c.post(f'/instructor/exam/{exam2_id}/permanent-delete', follow_redirects=True)
+    assert res_perm.status_code == 200
+    with app.app_context():
+        assert db.session.get(Exam, exam2_id) is None
+        assert db.session.get(Exam, exam1_id) is not None
+
+
