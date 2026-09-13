@@ -172,8 +172,40 @@
                 <!-- TAB 1: RESULT MATRIX (STUDENTS X QUESTIONS) -->
                 <!-- ========================================== -->
                 <div class="tab-pane fade show active" id="tab-matrix" role="tabpanel" aria-labelledby="matrix-tab">
-                    
-                    <!-- Search and Filters bar -->
+
+                    <!-- Socrative-style "Live Results" header -->
+                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <h2 class="fw-bold mb-0 text-slate-800">{{ session.exam.title }}</h2>
+                            <i class="bi bi-info-circle text-muted" title="Sala {{ session.session_code }} · {{ session.created_at.strftime('%d/%m/%Y %H:%M') }}"></i>
+                        </div>
+                        <div class="d-flex gap-2 no-print">
+                            <a href="{{ url_for('exams.download_session_results_excel', session_id=session.id) }}" class="soc-btn-pill soc-btn-pill-cyan">
+                                <i class="bi bi-file-earmark-excel"></i>Excel
+                            </a>
+                            <button type="button" class="soc-btn-pill soc-btn-pill-outline" onclick="window.print()">
+                                <i class="bi bi-printer"></i>Imprimir
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Show Names / Show Responses / Show Results toggles -->
+                    <div class="d-flex align-items-center gap-4 flex-wrap mb-3 no-print">
+                        <div class="d-flex align-items-center gap-2">
+                            <input class="form-check-input soc-toggle" type="checkbox" id="toggleShowNames" checked>
+                            <label class="form-check-label fw-semibold small mb-0" for="toggleShowNames">Mostrar nombres</label>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <input class="form-check-input soc-toggle" type="checkbox" id="toggleShowResponses" checked>
+                            <label class="form-check-label fw-semibold small mb-0" for="toggleShowResponses">Mostrar respuestas</label>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <input class="form-check-input soc-toggle" type="checkbox" id="toggleShowResults" checked>
+                            <label class="form-check-label fw-semibold small mb-0" for="toggleShowResults">Mostrar resultados</label>
+                        </div>
+                    </div>
+
+                    <!-- Search and pass/fail filter -->
                     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3 no-print">
                         <div class="input-group" style="max-width: 320px;">
                             <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted"></i></span>
@@ -186,65 +218,35 @@
                         </div>
                     </div>
 
-                    <!-- Matrix Table -->
-                    <div class="table-responsive rounded-3 border">
-                        <table class="table table-hover align-middle mb-0 text-center" id="matrixTable">
-                            <thead class="table-dark">
+                    <!-- "Live Results" grid: students x questions -->
+                    <div class="table-responsive rounded-3 border" id="liveResultsGrid">
+                        <table class="table mb-0 align-middle text-center soc-live-table" id="matrixTable">
+                            <thead>
                                 <tr>
-                                    <th class="text-start px-3" style="min-width: 220px;">Estudiante</th>
-                                    <th style="min-width: 100px;">Puntaje</th>
-                                    <th style="min-width: 100px;">Puntos</th>
-                                    <th style="min-width: 110px;">Estado</th>
+                                    <th class="text-start px-3 soc-live-name-col">Nombre</th>
+                                    <th style="min-width: 90px;">Puntaje</th>
                                     {% for snap in snapshots %}
-                                    <th class="text-center" style="min-width: 75px;" title="{{ snap.statement }} ({{ snap.points }} pts)">
-                                        <div class="small fw-bold">P{{ snap.order_index }}</div>
-                                        <div class="text-white-50" style="font-size: 0.7rem;">{{ snap.points }} pts</div>
+                                    <th class="soc-live-qhead soc-live-qhead-{{ loop.index0 % 4 }}" title="{{ snap.statement }} ({{ snap.points }} pts)">
+                                        {{ loop.index }}
                                     </th>
                                     {% endfor %}
-                                    <th class="no-print" style="min-width: 90px;">Acción</th>
+                                    <th class="no-print" style="min-width: 50px;"></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for row in matrix_rows %}
                                 <tr class="matrix-row" data-status="{% if row.is_passed %}passed{% else %}failed{% endif %}" data-name="{{ row.student_name|lower }} {{ row.username|lower }}">
                                     <!-- Student Info -->
-                                    <td class="text-start px-3">
-                                        <div class="d-flex align-items-center gap-2">
-                                            <div class="rounded-circle d-flex align-items-center justify-content-center bg-light text-primary fw-bold border" style="width: 34px; height: 34px; min-width: 34px; font-size: 0.85rem;">
-                                                {{ row.student_name[:1]|upper }}
-                                            </div>
-                                            <div class="text-truncate">
-                                                <strong class="text-dark d-block text-truncate" title="{{ row.student_name }}">{{ row.student_name }}</strong>
-                                                <small class="text-muted" style="font-size: 0.75rem;">@{{ row.username }}</small>
-                                            </div>
-                                        </div>
+                                    <td class="text-start px-3 soc-live-name-col">
+                                        <span class="soc-live-name-real fw-semibold text-dark">{{ row.student_name }}</span>
+                                        <span class="soc-live-name-anon fw-semibold text-dark">Estudiante {{ loop.index }}</span>
                                     </td>
 
                                     <!-- Score % -->
                                     <td>
-                                        <span class="fw-bold {% if row.is_passed %}text-success{% else %}text-danger{% endif %} fs-6">
+                                        <span class="fw-bold {% if row.is_passed %}text-success{% else %}text-danger{% endif %}">
                                             {{ row.score }}%
                                         </span>
-                                    </td>
-
-                                    <!-- Earned Points -->
-                                    <td>
-                                        <span class="badge bg-light text-dark border">
-                                            {{ row.earned_points }} / {{ row.max_points }}
-                                        </span>
-                                    </td>
-
-                                    <!-- Status -->
-                                    <td>
-                                        {% if row.is_passed %}
-                                            <span class="badge bg-success-subtle text-success px-2 py-1 rounded-pill">
-                                                <i class="bi bi-check-circle-fill me-1"></i>Aprobado
-                                            </span>
-                                        {% else %}
-                                            <span class="badge bg-danger-subtle text-danger px-2 py-1 rounded-pill">
-                                                <i class="bi bi-x-circle-fill me-1"></i>Reprobado
-                                            </span>
-                                        {% endif %}
                                     </td>
 
                                     <!-- Question Cells -->
@@ -252,65 +254,62 @@
                                     <td>
                                         {% if ans_cell.has_answer %}
                                             {% if ans_cell.is_correct is none %}
-                                                {# Pregunta abierta — pendiente revisión #}
-                                                <button type="button" class="btn btn-sm btn-info py-1 px-2 rounded-2 shadow-none"
+                                                <button type="button" class="soc-live-cell soc-live-pending border-0"
                                                         data-bs-toggle="modal" data-bs-target="#detailModal"
                                                         onclick="showAnswerModal('{{ row.student_name }}', '{{ snapshots[loop.index0].statement|replace("'", "\\'") }}', '{{ ans_cell.student_answer|replace("'", "\\'") }}', 'Revisión manual', false, '{{ ans_cell.points_awarded }}', '{{ ans_cell.feedback|replace("'", "\\'") }}')"
                                                         title="Respuesta abierta — pendiente de revisión">
                                                     <i class="bi bi-hourglass-split"></i>
+                                                    <span class="soc-live-answer-text">{{ ans_cell.student_answer }}</span>
                                                 </button>
                                             {% elif ans_cell.is_correct %}
-                                                <button type="button" class="btn btn-sm btn-success py-1 px-2 rounded-2 shadow-none" 
-                                                        data-bs-toggle="modal" data-bs-target="#detailModal" 
+                                                <button type="button" class="soc-live-cell soc-live-correct border-0"
+                                                        data-bs-toggle="modal" data-bs-target="#detailModal"
                                                         onclick="showAnswerModal('{{ row.student_name }}', '{{ snapshots[loop.index0].statement|replace("'", "\\'") }}', '{{ ans_cell.student_answer|replace("'", "\\'") }}', '{{ ans_cell.correct_answer|replace("'", "\\'") }}', true, '{{ ans_cell.points_awarded }}', '{{ ans_cell.feedback|replace("'", "\\'") }}')"
                                                         title="Correcta (+{{ ans_cell.points_awarded }} pts) - Click para ver">
                                                     <i class="bi bi-check-lg"></i>
+                                                    <span class="soc-live-answer-text">{{ ans_cell.student_answer }}</span>
                                                 </button>
                                             {% else %}
-                                                <button type="button" class="btn btn-sm btn-danger py-1 px-2 rounded-2 shadow-none"
-                                                        data-bs-toggle="modal" data-bs-target="#detailModal" 
+                                                <button type="button" class="soc-live-cell soc-live-incorrect border-0"
+                                                        data-bs-toggle="modal" data-bs-target="#detailModal"
                                                         onclick="showAnswerModal('{{ row.student_name }}', '{{ snapshots[loop.index0].statement|replace("'", "\\'") }}', '{{ ans_cell.student_answer|replace("'", "\\'") }}', '{{ ans_cell.correct_answer|replace("'", "\\'") }}', false, '{{ ans_cell.points_awarded }}', '{{ ans_cell.feedback|replace("'", "\\'") }}')"
                                                         title="Incorrecta (0 pts) - Click para ver">
                                                     <i class="bi bi-x-lg"></i>
+                                                    <span class="soc-live-answer-text">{{ ans_cell.student_answer }}</span>
                                                 </button>
                                             {% endif %}
                                         {% else %}
-                                            <span class="badge bg-light text-muted border">-</span>
+                                            <span class="soc-live-cell soc-live-empty">–</span>
                                         {% endif %}
                                     </td>
                                     {% endfor %}
 
                                     <!-- Single Action -->
                                     <td class="no-print">
-                                        <a href="{{ url_for('exams.download_attempt_results_excel', attempt_id=row.attempt.id) }}" 
-                                           class="btn btn-sm btn-outline-success py-1 px-2" title="Descargar Excel de este alumno">
+                                        <a href="{{ url_for('exams.download_attempt_results_excel', attempt_id=row.attempt.id) }}"
+                                           class="soc-icon-btn" title="Descargar Excel de este alumno">
                                             <i class="bi bi-file-earmark-excel"></i>
                                         </a>
                                     </td>
                                 </tr>
                                 {% else %}
                                 <tr>
-                                    <td colspan="{{ snapshots|length + 5 }}" class="text-center py-5 text-muted">
+                                    <td colspan="{{ snapshots|length + 3 }}" class="text-center py-5 text-muted">
                                         <i class="bi bi-inbox fs-1 d-block mb-2 text-secondary"></i>
                                         No hay entregas registradas en esta sala de examen.
                                     </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
-                            
-                            <!-- Matrix Footer with Question Accuracy summary -->
+
+                            <!-- Class Total row: accuracy per question -->
                             {% if matrix_rows %}
-                            <tfoot class="table-light border-top-2 fw-bold">
-                                <tr>
-                                    <td colspan="4" class="text-start px-3 text-muted">
-                                        <i class="bi bi-bar-chart-fill me-1"></i> Precisión de la Clase por Pregunta:
-                                    </td>
+                            <tfoot>
+                                <tr class="soc-live-total-row">
+                                    <td class="text-start px-3">Total de la clase</td>
+                                    <td></td>
                                     {% for q_stat in question_analytics %}
-                                    <td class="text-center">
-                                        <span class="badge {{ q_stat.diff_badge }} px-2 py-1" style="font-size: 0.75rem;" title="{{ q_stat.correct_count }} de {{ summary.total_attempts }} correctas">
-                                            {{ q_stat.accuracy }}%
-                                        </span>
-                                    </td>
+                                    <td title="{{ q_stat.correct_count }} de {{ summary.total_attempts }} correctas">{{ q_stat.accuracy }}%</td>
                                     {% endfor %}
                                     <td class="no-print"></td>
                                 </tr>
@@ -745,6 +744,25 @@ document.getElementById('matrixSearchInput')?.addEventListener('input', function
         }
     });
 });
+
+// Live Results grid toggles: names / responses / results visibility
+(function () {
+    const grid = document.getElementById('liveResultsGrid');
+    if (!grid) return;
+
+    function wireToggle(id, cssClass) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        grid.classList.toggle(cssClass, !el.checked);
+        el.addEventListener('change', function () {
+            grid.classList.toggle(cssClass, !this.checked);
+        });
+    }
+
+    wireToggle('toggleShowNames', 'soc-hide-names');
+    wireToggle('toggleShowResponses', 'soc-hide-responses');
+    wireToggle('toggleShowResults', 'soc-hide-results');
+})();
 
 // Search Student Detail Cards by Name
 document.getElementById('studentCardsSearchInput')?.addEventListener('input', function(e) {

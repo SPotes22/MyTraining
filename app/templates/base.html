@@ -660,6 +660,103 @@
             margin-bottom: 0.9rem;
         }
 
+        /* =========================================================
+           "LIVE RESULTS" GRID (session report matrix)
+           ========================================================= */
+
+        .soc-live-table thead th {
+            background: var(--surface);
+            color: var(--muted);
+            font-weight: 700;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            border-bottom: 2px solid var(--border);
+            padding: 0.6rem 0.4rem;
+        }
+
+        .soc-live-name-col {
+            min-width: 190px;
+            text-align: left;
+        }
+
+        .soc-live-qhead {
+            min-width: 74px;
+            font-size: 0.95rem !important;
+            font-weight: 800 !important;
+            text-transform: none !important;
+            color: #ffffff !important;
+            border-radius: 8px 8px 0 0;
+        }
+
+        .soc-live-qhead-0 { background: #f0ad4e !important; }
+        .soc-live-qhead-1 { background: #5b7fd6 !important; }
+        .soc-live-qhead-2 { background: #4caf50 !important; }
+        .soc-live-qhead-3 { background: #e0645a !important; }
+
+        .soc-live-cell {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            justify-content: center;
+            width: 100%;
+            min-height: 34px;
+            padding: 0.35rem 0.55rem;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: filter 0.15s ease;
+        }
+
+        .soc-live-cell:hover { filter: brightness(0.96); }
+
+        .soc-live-correct { background: #e6f6e8; color: #2e7d32; }
+        .soc-live-incorrect { background: #fbe9e7; color: #c0392b; }
+        .soc-live-pending { background: #e8f1fb; color: #1c5d8c; }
+        .soc-live-empty {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            min-height: 34px;
+            color: #c7ced6;
+            font-weight: 700;
+        }
+
+        .soc-live-answer-text {
+            max-width: 90px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .soc-live-total-row td {
+            background: #f3f5f7;
+            font-weight: 800;
+            color: var(--text);
+            padding: 0.6rem 0.4rem;
+        }
+
+        /* Anonymize toggle: hide real names, show "Estudiante N" */
+        #liveResultsGrid .soc-live-name-anon { display: none; }
+        #liveResultsGrid.soc-hide-names .soc-live-name-real { display: none; }
+        #liveResultsGrid.soc-hide-names .soc-live-name-anon { display: inline; }
+
+        /* Hide response text but keep the correct/incorrect icon */
+        #liveResultsGrid.soc-hide-responses .soc-live-answer-text { display: none; }
+
+        /* Hide the correctness reveal entirely (e.g. presenting live before revealing) */
+        #liveResultsGrid.soc-hide-results .soc-live-cell,
+        #liveResultsGrid.soc-hide-results .soc-live-empty {
+            background: #eef1f4 !important;
+            color: #eef1f4 !important;
+        }
+        #liveResultsGrid.soc-hide-results .soc-live-cell i { visibility: hidden; }
+        #liveResultsGrid.soc-hide-results .soc-live-total-row td:not(:first-child):not(:nth-child(2)) {
+            color: transparent;
+            background: #eef1f4;
+        }
+
 
         /* =========================================================
            FLASH MESSAGES
