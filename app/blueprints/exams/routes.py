@@ -2,13 +2,14 @@ import random
 import string
 from io import BytesIO
 import pandas as pd
-from flask import render_template, request, redirect, url_for, flash, send_file
+from flask import render_template, request, redirect, url_for, flash, send_file, jsonify
 from flask_login import login_required, current_user
 from app.extensions import db, socketio
 from app.realtime import events
 from app.realtime.manager import session_manager
 from app.modes import registry
 from app.services.exam_content import normalize_room_code, create_session_question_snapshots
+from app.services.video_cues import cue_wait_seconds, mark_cue_viewed
 from app.models import (
     User, Bank, Question, QuestionOption, Exam, ExamQuestion, 
     ExamSession, ExamAttempt, StudentAnswer, SessionQuestionSnapshot,
@@ -177,59 +178,77 @@ def instructor_lobby(session_id):
     join_url = url_for('auth.student_join_exam', _external=True)
     return render_template('instructor_lobby.html', session=session_obj, attempts=attempts, join_url=join_url)
 
+def build_question_item(eq):
+    """Datos que necesita `_exam_question_body.html` para una pregunta (opciones barajadas)."""
+    q = eq.question
+    if q.question_type in ['multiple_choice', 'multiple_select', 'true_false', 'video']:
+        opts = list(q.options)
+        random.shuffle(opts)
+        return {'question': q, 'type': q.question_type, 'options': opts, 'points': eq.points}
+    if q.question_type == 'matching':
+        pairs = list(q.matching_pairs)
+        random.shuffle(pairs)
+        all_rights = [p.right_text for p in pairs]
+        random.shuffle(all_rights)
+        return {'question': q, 'type': 'matching', 'pairs': pairs, 'right_options': all_rights, 'points': eq.points}
+    if q.question_type == 'ordering':
+        items = list(q.order_items)
+        random.shuffle(items)
+        return {'question': q, 'type': 'ordering', 'order_list': items, 'points': eq.points}
+    if q.question_type == 'open_answer':
+        return {'question': q, 'type': 'open_answer', 'points': eq.points}
+    return None
+
+
+def _video_cue_key(session_id, question_id):
+    return f'exam:{session_id}:{current_user.id}:{question_id}'
+
+
 @exams_bp.route('/exam/presentar/<int:session_id>')
 @login_required
 def presentar_examen(session_id):
     session_obj = ExamSession.query.get_or_404(session_id)
     exam = session_obj.exam
-    
+
     questions_data = []
     eq_list = list(exam.questions)
     random.shuffle(eq_list)
-    
+
     for eq in eq_list:
-        q = eq.question
-        
-        if q.question_type in ['multiple_choice', 'multiple_select', 'true_false', 'video']:
-            opts = list(q.options)
-            random.shuffle(opts)
-            questions_data.append({
-                'question': q,
-                'type': q.question_type,
-                'options': opts,
-                'points': eq.points
-            })
-        elif q.question_type == 'matching':
-            pairs = list(q.matching_pairs)
-            random.shuffle(pairs)
-            all_rights = [p.right_text for p in pairs]
-            random.shuffle(all_rights)
-            questions_data.append({
-                'question': q,
-                'type': 'matching',
-                'pairs': pairs,
-                'right_options': all_rights,
-                'points': eq.points
-            })
-        elif q.question_type == 'ordering':
-            items = list(q.order_items)
-            random.shuffle(items)
-            questions_data.append({
-                'question': q,
-                'type': 'ordering',
-                'order_list': items,
-                'points': eq.points
-            })
-        elif q.question_type == 'open_answer':
-            text = (request.form.get(f'question_{q.id}') or '').strip()
-            questions_data.append({
-                'question': q,
-                'type': 'open_answer',
-                'points': eq.points
-            })
-            
-    
+        item = build_question_item(eq)
+        if not item:
+            continue
+        cue = eq.question.video_cue
+        if cue and cue['has_cue']:
+            mark_cue_viewed(_video_cue_key(session_id, eq.question_id))
+        questions_data.append(item)
+
     return render_template('presentar_examen.html', session=session_obj, exam=exam, questions_data=questions_data)
+
+
+@exams_bp.route('/exam/presentar/<int:session_id>/video-question/<int:question_id>')
+@login_required
+def video_cue_question(session_id, question_id):
+    """
+    RF-011: entrega el enunciado y las opciones de una pregunta con cue solo cuando
+    ya pasó el tiempo de video correspondiente (o si el estudiante ya la respondió).
+    """
+    session_obj = ExamSession.query.get_or_404(session_id)
+    eq = ExamQuestion.query.get((session_obj.exam_id, question_id))
+    if not eq:
+        return jsonify({'error': 'La pregunta no pertenece a este examen.'}), 404
+    cue = eq.question.video_cue
+    wait = 0
+    if cue and cue['has_cue']:
+        already_answered = LiveAnswer.query.filter_by(
+            session_id=session_id, student_id=current_user.id, question_id=question_id).first()
+        if not already_answered:
+            wait = cue_wait_seconds(_video_cue_key(session_id, question_id), cue['start'], cue['question_at'])
+    if wait > 0:
+        return jsonify({'error': 'Todavía no llega el momento de esta pregunta en el video.',
+                        'retry_after': wait}), 425
+    html = render_template('_exam_question_body.html', item=build_question_item(eq), part='all')
+    return jsonify({'html': html})
 
 @exams_bp.route('/instructor/exam/create-advanced', methods=['POST'])
 @login_required

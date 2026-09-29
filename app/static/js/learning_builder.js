@@ -188,7 +188,37 @@ function getBlockTypeName(tipo) {
     return names[tipo] || tipo;
 }
 
+// RF-011: marca en el lienzo los minutos de las preguntas dentro de videos.
 function renderBlockContent(blk) {
+    const cfg = blk.configuracion || {};
+    if (blk.tipo === 'video') {
+        return renderBlockContentBase(blk) + renderBuilderVideoCues(cfg);
+    }
+    const cue = blk.tipo === 'question' ? videoCueForQuestion(blk.id) : null;
+    if (cue) {
+        return `<div class="small text-primary fw-semibold mb-2"><i class="bi bi-stopwatch me-1"></i>Aparece en el minuto ${formatCueTime(cue.at)} del video${cue.pause === false ? '' : ' (con pausa)'}</div>`
+            + renderBlockContentBase(blk);
+    }
+    return renderBlockContentBase(blk);
+}
+
+function videoCueForQuestion(blockId) {
+    for (const b of currentBlocks) {
+        if (b.tipo !== 'video') continue;
+        const cue = ((b.configuracion || {}).cues || []).find(c => Number(c.question_block_id) === blockId);
+        if (cue) return cue;
+    }
+    return null;
+}
+
+function renderBuilderVideoCues(cfg) {
+    const cues = (cfg.cues || []).filter(c => currentBlocks.some(b => b.id === Number(c.question_block_id)));
+    if (!cues.length) return '';
+    return `<div class="small text-muted mt-2"><i class="bi bi-stopwatch me-1"></i>Preguntas en el video: ${
+        cues.map(c => `<span class="badge bg-primary-subtle text-primary-emphasis border me-1">${formatCueTime(c.at)}</span>`).join('')}</div>`;
+}
+
+function renderBlockContentBase(blk) {
     const cfg = blk.configuracion || {};
 
     if (blk.tipo === 'title') {
@@ -478,6 +508,7 @@ function openBlockConfigModal(blockId) {
                 <label class="form-label fw-bold">Descripción / Leyenda</label>
                 <input type="text" id="cfg_caption" class="form-control" value="${cfg.caption || ''}">
             </div>
+            ${renderVideoCuesEditor(cfg)}
         `;
     } else if (blk.tipo === 'question') {
         html = `
@@ -600,7 +631,7 @@ function saveBlockConfigFromModal() {
     const blk = currentBlocks.find(b => b.id === editingBlockId);
     if (!blk) return;
 
-    let cfg = blk.configuracion || {};
+    let cfg = JSON.parse(JSON.stringify(blk.configuracion || {}));
 
     if (blk.tipo === 'title') {
         cfg.title = document.getElementById('cfg_title')?.value || cfg.title;
@@ -615,6 +646,8 @@ function saveBlockConfigFromModal() {
     } else if (blk.tipo === 'video') {
         cfg.url = document.getElementById('cfg_url')?.value || cfg.url;
         cfg.caption = document.getElementById('cfg_caption')?.value || cfg.caption;
+        cfg.start = document.getElementById('cfg_video_start')?.value || 0;
+        cfg.cues = readVideoCuesEditor();
     } else if (blk.tipo === 'question') {
         cfg.question_type = document.getElementById('cfg_qtype')?.value || cfg.question_type;
         cfg.question = document.getElementById('cfg_question')?.value || cfg.question;
@@ -636,22 +669,98 @@ function saveBlockConfigFromModal() {
         }
     }
 
-    blk.configuracion = cfg;
-    renderBlocks();
-
     // Guardar en backend
     showSaving();
     const formData = new FormData();
     formData.append('configuracion', JSON.stringify(cfg));
 
     fetch(`/learning/api/block/update/${editingBlockId}`, { method: 'POST', body: formData })
-    .then(r => r.json())
-    .then(() => {
+    .then(r => r.json().then(data => ({ ok: r.ok, data })))
+    .then(({ ok, data }) => {
+        if (!ok) {
+            // El servidor valida (p. ej. los minutos de las preguntas del video): el modal sigue abierto.
+            const el = document.getElementById('saveStatus');
+            if (el) el.innerHTML = `<i class="bi bi-exclamation-triangle-fill text-danger me-1"></i>No guardado`;
+            alert(data.error || 'No se pudo guardar el bloque.');
+            return;
+        }
+        blk.configuracion = data.block.configuracion;
+        renderBlocks();
         showSaved();
         const modalEl = document.getElementById('blockConfigModal');
         const modal = bootstrap.Modal.getInstance(modalEl);
         if(modal) modal.hide();
     });
+}
+
+/* ── RF-011 · Preguntas dentro del video ─────────────────────────────────── */
+function formatCueTime(seconds) {
+    seconds = parseInt(seconds || 0, 10);
+    const h = Math.floor(seconds / 3600), m = Math.floor((seconds % 3600) / 60), s = seconds % 60;
+    const pad = n => String(n).padStart(2, '0');
+    return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+function questionBlockLabel(qb) {
+    const text = ((qb.configuracion || {}).question || 'Pregunta').replace(/<[^>]*>/g, '');
+    return `#${qb.orden} · ${text.length > 60 ? text.slice(0, 60) + '…' : text}`;
+}
+
+function videoCueRowHtml(cue, questions) {
+    const options = questions.map(qb =>
+        `<option value="${qb.id}" ${Number(cue.question_block_id) === qb.id ? 'selected' : ''}>${questionBlockLabel(qb)}</option>`
+    ).join('');
+    return `
+        <div class="row g-2 align-items-center video-cue-row mb-2">
+            <div class="col-3"><input type="text" class="form-control cue-at" placeholder="mm:ss" value="${cue.at ? formatCueTime(cue.at) : ''}"></div>
+            <div class="col-6"><select class="form-select cue-question">${options}</select></div>
+            <div class="col-2">
+                <div class="form-check form-switch mb-0" title="Pausar el video al mostrar la pregunta">
+                    <input class="form-check-input cue-pause" type="checkbox" ${cue.pause === false ? '' : 'checked'}>
+                    <label class="form-check-label small">Pausa</label>
+                </div>
+            </div>
+            <div class="col-1"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.video-cue-row').remove()"><i class="bi bi-trash"></i></button></div>
+        </div>
+    `;
+}
+
+function renderVideoCuesEditor(cfg) {
+    const questions = currentBlocks.filter(b => b.tipo === 'question');
+    // Se descartan los cues de preguntas que ya no existen en la lección.
+    const cues = (cfg.cues || []).filter(c => questions.some(q => q.id === Number(c.question_block_id)));
+    const rows = cues.map(c => videoCueRowHtml(c, questions)).join('');
+    return `
+        <div class="border rounded p-3 bg-light">
+            <div class="fw-bold mb-2"><i class="bi bi-stopwatch me-1 text-primary"></i>Preguntas dentro del video</div>
+            <div class="mb-3">
+                <label class="form-label small fw-semibold" for="cfg_video_start">Inicio del video (mm:ss)</label>
+                <input type="text" id="cfg_video_start" class="form-control" placeholder="0:00" value="${cfg.start ? formatCueTime(cfg.start) : ''}">
+            </div>
+            ${questions.length ? `
+                <div id="videoCuesList">${rows}</div>
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill" onclick="addVideoCueRow()">
+                    <i class="bi bi-plus-lg me-1"></i>Agregar pregunta en un minuto del video
+                </button>
+                <div class="form-text">Cada pregunta queda oculta hasta que el video llega a su minuto. Solo YouTube, Vimeo o MP4/WEBM.</div>
+            ` : `<div class="text-muted small">Agrega bloques de <strong>Pregunta</strong> a esta lección para poder mostrarlos durante el video.</div>`}
+        </div>
+    `;
+}
+
+function addVideoCueRow() {
+    const list = document.getElementById('videoCuesList');
+    if (!list) return;
+    const questions = currentBlocks.filter(b => b.tipo === 'question');
+    list.insertAdjacentHTML('beforeend', videoCueRowHtml({ pause: true }, questions));
+}
+
+function readVideoCuesEditor() {
+    return [...document.querySelectorAll('#videoCuesList .video-cue-row')].map(row => ({
+        at: row.querySelector('.cue-at').value.trim(),
+        question_block_id: parseInt(row.querySelector('.cue-question').value, 10),
+        pause: row.querySelector('.cue-pause').checked,
+    }));
 }
 
 // Estructura de Módulos y Lecciones

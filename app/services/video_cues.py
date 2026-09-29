@@ -19,11 +19,17 @@ cómo reproducirlo y en qué segundo debe aparecer la pregunta:
 `video_timestamp` (columna heredada) se mantiene sincronizado con `question_at`.
 """
 import re
+import time
 from urllib.parse import urlparse, parse_qs
+
+from flask import session as flask_session
 
 VIDEO_METADATA_VERSION = 1
 TRACKABLE_PROVIDERS = {'youtube', 'vimeo', 'file'}
 VIDEO_FILE_EXTENSIONS = ('.mp4', '.webm', '.ogg', '.ogv', '.mov', '.m4v')
+# Margen para buffering / latencia entre que el video llega al cue y el servidor responde.
+CUE_UNLOCK_TOLERANCE_SECONDS = 3
+_CUE_VIEWS_KEY = 'video_cue_views'
 
 _YT_ID = re.compile(r'^[A-Za-z0-9_-]{6,20}$')
 
@@ -167,3 +173,109 @@ def embed_src(meta):
     if meta['provider'] == 'file':
         return f'{url}#t={start}' if start else url
     return url
+
+
+# ── Desbloqueo en servidor ───────────────────────────────────────────────────
+# El contenido de una pregunta con cue no viaja en el HTML: el navegador lo pide
+# cuando la reproducción llega al cue. Como el servidor no ve el reproductor, exige
+# al menos que haya pasado el tiempo de video correspondiente desde que el
+# estudiante abrió la página (se guarda en la sesión firmada de Flask).
+
+def mark_cue_viewed(key):
+    views = flask_session.get(_CUE_VIEWS_KEY) or {}
+    if key not in views:
+        views[key] = time.time()
+        flask_session[_CUE_VIEWS_KEY] = views
+
+
+def cue_wait_seconds(key, start, question_at):
+    """Segundos que faltan para poder entregar la pregunta (0 = ya se puede)."""
+    required = max(0, (question_at or 0) - (start or 0) - CUE_UNLOCK_TOLERANCE_SECONDS)
+    views = flask_session.get(_CUE_VIEWS_KEY) or {}
+    first_view = views.get(key)
+    if first_view is None:
+        mark_cue_viewed(key)
+        return required
+    return max(0, int(round(first_view + required - time.time())))
+
+
+# ── Learning Builder: preguntas dentro de un bloque de video ─────────────────
+# configuracion del bloque de video:
+#   {"url": ..., "start": 30, "cues": [{"at": 95, "question_block_id": 12, "pause": true}]}
+
+def normalize_learning_video_cues(cfg, lesson_blocks):
+    """Valida `start`/`cues` de un bloque de video contra los bloques de su lección."""
+    cfg = dict(cfg or {})
+    start = parse_timestamp(cfg.get('start')) or 0
+    cues_in = cfg.get('cues') or []
+    if not isinstance(cues_in, list):
+        raise ValueError('Las preguntas del video deben ser una lista.')
+    question_ids = {b.id for b in lesson_blocks if b.tipo == 'question'}
+    source = parse_video_source(cfg.get('url'))
+    cues, used = [], set()
+    for cue in cues_in:
+        at = parse_timestamp((cue or {}).get('at'))
+        try:
+            qid = int(cue.get('question_block_id'))
+        except (TypeError, ValueError):
+            raise ValueError('Cada pregunta del video debe apuntar a un bloque de pregunta.')
+        if at is None:
+            raise ValueError('Indica en qué minuto aparece cada pregunta del video.')
+        if at <= start:
+            raise ValueError('Las preguntas deben aparecer después del inicio del video.')
+        if qid not in question_ids:
+            raise ValueError('La pregunta elegida no es un bloque de pregunta de esta lección.')
+        if qid in used:
+            raise ValueError('Una misma pregunta no puede aparecer dos veces en el video.')
+        used.add(qid)
+        cues.append({'at': at, 'question_block_id': qid, 'pause': bool(cue.get('pause', True))})
+    if cues and (not source or source['provider'] not in TRACKABLE_PROVIDERS):
+        raise ValueError('Solo se pueden poner preguntas dentro de videos de YouTube, Vimeo o archivos MP4/WEBM.')
+    cfg['start'] = start
+    cfg['cues'] = sorted(cues, key=lambda c: c['at'])
+    return cfg
+
+
+def learning_video_player(cfg, question_blocks):
+    """
+    Metadatos para el reproductor del estudiante: solo los cues cuyo bloque de
+    pregunta sigue existiendo y es visible en la lección.
+    """
+    source = parse_video_source((cfg or {}).get('url'))
+    if not source or source['provider'] not in TRACKABLE_PROVIDERS:
+        return None
+    start = int(cfg.get('start') or 0)
+    cues = [
+        {'at': int(c['at']), 'pause': bool(c.get('pause', True)),
+         'question_block_id': int(c['question_block_id']),
+         'target': f"#block_{int(c['question_block_id'])}", 'label': format_timestamp(c['at'])}
+        for c in (cfg.get('cues') or [])
+        if int(c.get('question_block_id') or 0) in question_blocks and int(c.get('at') or 0) > start
+    ]
+    if not cues:
+        return None
+    return {**source, 'embed_src': embed_src({**source, 'start': start}), 'start': start, 'cues': cues}
+
+
+def remap_learning_video_cues(cfg, id_map):
+    """Tras copiar/importar bloques, apunta los cues a los nuevos IDs (descarta los huérfanos)."""
+    if not cfg or not cfg.get('cues'):
+        return cfg
+    cfg = dict(cfg)
+    cfg['cues'] = [
+        {**c, 'question_block_id': id_map[c.get('question_block_id')]}
+        for c in cfg['cues'] if c.get('question_block_id') in id_map
+    ]
+    return cfg
+
+
+def sanitize_question_block_config(cfg):
+    """Configuración de una pregunta sin las respuestas correctas (para el estudiante)."""
+    cfg = dict(cfg or {})
+    cfg['options'] = [{'id': o.get('id'), 'text': o.get('text')} for o in cfg.get('options') or []]
+    for key in ('correct_answer_tf', 'short_answers', 'feedback', 'explanation'):
+        cfg.pop(key, None)
+    cfg['order_items'] = [{'id': i.get('id'), 'text': i.get('text')} for i in cfg.get('order_items') or []]
+    cfg['matching_pairs'] = [{'id': p.get('id'), 'left': p.get('left')} for p in cfg.get('matching_pairs') or []]
+    cfg.pop('fill_text', None)
+    return cfg

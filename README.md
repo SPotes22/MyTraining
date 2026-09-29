@@ -43,6 +43,7 @@ Puntos de progreso clicables arriba de cada pregunta — de un vistazo sabes qu�
 - **Constructor único** por examen: agrega desde el banco, al azar, o crea preguntas nuevas con píldoras de "agregar en blanco".
 - **Salas en vivo** con Socket.IO: orden original o aleatorio, pausa/reanuda, preguntas guiadas por el profesor.
 - **Reportes** con matriz de resultados, desglose por pregunta y por estudiante, exportación a Excel, y ahora la vista tipo "Live Results".
+- **Preguntas en videos (RF-011)**: en preguntas del banco y en bloques de video de Learning Builder, la pregunta aparece (y el video se pausa) al llegar al minuto configurado. Los tiempos se guardan como JSON (`video_metadata` / `configuracion.cues`) y el contenido de la pregunta solo se envía al navegador cuando llega su momento.
 - **Retroalimentación automática**: genera un curso de refuerzo en Learning Builder para quienes saquen menos del 40%.
 
 ## 🛠️ Cómo levantarlo en local

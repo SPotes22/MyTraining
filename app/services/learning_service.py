@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 from app.extensions import db
 from app.models import Learning, LearningModule, Lesson, Block, LearningProgress, BlockAnswer
+from app.services.video_cues import remap_learning_video_cues
 
 def create_default_learning(autor_id, nombre, descripcion=None, portada=None):
     learning = Learning(
@@ -84,6 +85,7 @@ def duplicate_learning(learning_id, new_autor_id):
             db.session.add(new_les)
             db.session.flush()
 
+            id_map, new_blocks = {}, []
             for orig_block in orig_les.blocks:
                 new_block = Block(
                     lesson_id=new_les.id,
@@ -93,9 +95,19 @@ def duplicate_learning(learning_id, new_autor_id):
                     configuracion=json.loads(json.dumps(orig_block.configuracion))
                 )
                 db.session.add(new_block)
+                db.session.flush()
+                id_map[orig_block.id] = new_block.id
+                new_blocks.append(new_block)
+            _remap_lesson_video_cues(new_blocks, id_map)
 
     db.session.commit()
     return new_learning
+
+
+def _remap_lesson_video_cues(blocks, id_map):
+    for blk in blocks:
+        if blk.tipo == 'video' and (blk.configuracion or {}).get('cues'):
+            blk.configuracion = remap_learning_video_cues(blk.configuracion, id_map)
 
 
 def export_learning_json(learning_id):
@@ -124,6 +136,7 @@ def export_learning_json(learning_id):
             }
             for blk in les.blocks:
                 blk_data = {
+                    "id": blk.id,  # permite reconectar las preguntas dentro de videos al importar
                     "tipo": blk.tipo,
                     "orden": blk.orden,
                     "visible": blk.visible,
@@ -174,6 +187,7 @@ def import_learning_json(data, autor_id):
             db.session.flush()
 
             blocks_data = les_data.get("blocks", [])
+            id_map, new_blocks = {}, []
             for b_idx, blk_data in enumerate(blocks_data, 1):
                 blk = Block(
                     lesson_id=les.id,
@@ -183,6 +197,11 @@ def import_learning_json(data, autor_id):
                     configuracion=blk_data.get("configuracion", {})
                 )
                 db.session.add(blk)
+                db.session.flush()
+                if blk_data.get("id") is not None:
+                    id_map[blk_data["id"]] = blk.id
+                new_blocks.append(blk)
+            _remap_lesson_video_cues(new_blocks, id_map)
 
     db.session.commit()
     return learning
@@ -212,7 +231,9 @@ def default_block_config(tipo):
             "video_type": "url",  # 'url' (YouTube/Vimeo) o 'local'
             "url": "",
             "caption": "Descripción del video",
-            "autoplay": False
+            "autoplay": False,
+            "start": 0,
+            "cues": []  # RF-011: [{"at": segundos, "question_block_id": id, "pause": true}]
         }
     elif tipo == 'question':
         return {

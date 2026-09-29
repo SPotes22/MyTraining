@@ -110,6 +110,20 @@ function renderStudentBlocks(blocks) {
 
     let html = '';
     visibleBlocks.forEach(blk => {
+        if (blk.video_cue) {
+            // RF-011: pregunta que aparece dentro de un video; su contenido llega del
+            // servidor cuando la reproducción alcanza el minuto configurado.
+            html += `
+                <div class="block-student-item mb-4 pb-3 border-bottom" id="block_${blk.id}" data-cue-key="learning-${window.LEARNING_ID}-${blk.id}">
+                    <div class="video-cue-waiting alert alert-primary d-flex align-items-center gap-2 mb-0" role="status">
+                        <i class="bi bi-play-circle-fill fs-4"></i>
+                        <div>Pregunta del video: aparecerá en el minuto <strong>${blk.video_cue.label}</strong>.</div>
+                    </div>
+                    <div class="video-cue-gate d-none" data-cue-src="${blk.video_cue.src}"></div>
+                </div>
+            `;
+            return;
+        }
         html += `
             <div class="block-student-item mb-4 pb-3 border-bottom" id="block_${blk.id}">
                 ${renderStudentBlockContent(blk)}
@@ -118,6 +132,33 @@ function renderStudentBlocks(blocks) {
     });
 
     container.innerHTML = html;
+    window.VideoCues?.init(container, { render: json => renderQuestionBlockStudent(json.block) });
+}
+
+function escapeAttr(text) {
+    return String(text).replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function renderCueVideoPlayer(blk) {
+    const cfg = blk.configuracion || {};
+    const player = blk.player;
+    let media;
+    if (player.provider === 'youtube') {
+        media = `<div class="video-cue-yt"></div>`;
+    } else if (player.provider === 'vimeo') {
+        media = `<iframe src="${escapeAttr(player.embed_src)}" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>`;
+    } else {
+        media = `<video controls preload="metadata" playsinline src="${escapeAttr(player.embed_src)}"></video>`;
+    }
+    const marks = player.cues.map(c => `<span class="badge bg-primary-subtle text-primary-emphasis border me-1"><i class="bi bi-question-circle me-1"></i>${c.label}</span>`).join('');
+    return `
+        <div class="ratio ratio-16x9 rounded overflow-hidden shadow-sm my-3 video-cue-player" data-video-cue='${escapeAttr(JSON.stringify(player))}'>
+            ${media}
+        </div>
+        <div class="small text-muted"><i class="bi bi-stopwatch me-1"></i>Preguntas en este video: ${marks}</div>
+        ${cfg.caption ? `<p class="text-muted small mt-2">${cfg.caption}</p>` : ''}
+    `;
 }
 
 function renderStudentBlockContent(blk) {
@@ -145,6 +186,7 @@ function renderStudentBlockContent(blk) {
 
     if (blk.tipo === 'video') {
         if (!cfg.url) return '';
+        if (blk.player) return renderCueVideoPlayer(blk);
         if (cfg.url.includes('youtube.com') || cfg.url.includes('youtu.be')) {
             let embedUrl = cfg.url;
             if (cfg.url.includes('watch?v=')) embedUrl = cfg.url.replace('watch?v=', 'embed/');
