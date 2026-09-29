@@ -19,6 +19,7 @@ def ensure_schema():
     attempt_columns = {col['name'] for col in inspector.get_columns('exam_attempts')} if 'exam_attempts' in table_names else set()
     answer_columns = {col['name'] for col in inspector.get_columns('student_answers')} if 'student_answers' in table_names else set()
     user_columns = {col['name'] for col in inspector.get_columns('users')} if 'users' in table_names else set()
+    snapshot_columns = {col['name'] for col in inspector.get_columns('session_question_snapshots')} if 'session_question_snapshots' in table_names else set()
     learning_columns = {col['name'] for col in inspector.get_columns('learnings')} if 'learnings' in table_names else set()
     with db.engine.begin() as conn:
         _add_column_if_missing(conn, exam_columns, 'exams', 'exam_mode', "VARCHAR(30) DEFAULT 'instant_feedback'")
@@ -38,6 +39,8 @@ def ensure_schema():
         _add_column_if_missing(conn, question_columns, 'questions', 'default_points', 'FLOAT DEFAULT 1.0')
         _add_column_if_missing(conn, question_columns, 'questions', 'created_at', 'DATETIME')
         _add_column_if_missing(conn, question_columns, 'questions', 'updated_at', 'DATETIME')
+        _add_column_if_missing(conn, question_columns, 'questions', 'video_metadata', 'JSON')
+        _add_column_if_missing(conn, snapshot_columns, 'session_question_snapshots', 'video_metadata', 'JSON')
         _add_column_if_missing(conn, exam_question_columns, 'exam_questions', 'order_index', 'INTEGER DEFAULT 1')
         _add_column_if_missing(conn, attempt_columns, 'exam_attempts', 'attempt_number', 'INTEGER DEFAULT 1')
         _add_column_if_missing(conn, attempt_columns, 'exam_attempts', 'earned_points', 'FLOAT DEFAULT 0')
@@ -136,6 +139,10 @@ def create_app():
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
     socketio.init_app(app)
+
+    from app.services.video_cues import embed_src, format_timestamp
+    app.add_template_filter(format_timestamp, 'mmss')
+    app.add_template_global(embed_src, 'video_embed_src')
 
     with app.app_context():
         init_db()

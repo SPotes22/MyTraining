@@ -1,6 +1,7 @@
 import random
 from app.extensions import db
 from app.models import Exam, ExamQuestion, Question, QuestionOption, QuestionMatching, QuestionOrder
+from app.services.video_cues import build_video_metadata
 
 QUESTION_TYPES_WITH_OPTIONS = {'multiple_choice', 'single_choice', 'multiple_select', 'true_false', 'video'}
 FEEDBACK_MAX_LENGTH = 3000
@@ -46,6 +47,7 @@ def save_question_payload(question, form):
     question.default_points = validate_points(form.get('default_points', 1))
     question.image_url = form.get('image_url', '').strip() or None
     question.video_url = form.get('video_url', '').strip() or None
+    save_video_cue(question, form)
 
     clear_question_children(question)
     if qtype == 'true_false':
@@ -80,6 +82,23 @@ def save_question_payload(question, form):
     return question
 
 
+def save_video_cue(question, form):
+    """RF-011: guarda en JSON cuándo arranca el video y cuándo aparece la pregunta."""
+    if not question.video_url:
+        question.video_metadata = None
+        question.video_timestamp = None
+        return
+    meta = build_video_metadata(
+        question.video_url,
+        start=form.get('video_start'),
+        question_at=form.get('video_question_at'),
+        # Un checkbox desmarcado no se envía: solo se lee si el formulario trae los campos del cue.
+        pause_on_question=('video_pause_on_question' in form) if 'video_cue_fields' in form else True,
+    )
+    question.video_metadata = meta
+    question.video_timestamp = meta['question_at']
+
+
 def duplicate_question(question):
     copy = Question(
         bank_id=question.bank_id,
@@ -91,6 +110,7 @@ def duplicate_question(question):
         image_url=question.image_url,
         video_url=question.video_url,
         video_timestamp=question.video_timestamp,
+        video_metadata=question.video_metadata,
     )
     db.session.add(copy)
     db.session.flush()

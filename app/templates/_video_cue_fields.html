@@ -1,0 +1,39 @@
+{# RF-011 · Preguntas en videos. Espera `vq` (Question existente o None al crear). #}
+{% set cue = vq.video_cue if vq else None %}
+{% set cue_uid = vq.id if vq else 'new' %}
+<div class="col-md-6">
+  <label class="form-label fw-semibold"><i class="bi bi-film me-1 text-primary"></i>URL de Video (Opcional)</label>
+  <input name="video_url" value="{{ vq.video_url if vq and vq.video_url else '' }}" class="form-control"
+         placeholder="YouTube, Vimeo o /static/uploads/video.mp4">
+</div>
+<div class="col-12">
+  <input type="hidden" name="video_cue_fields" value="1">
+  <div class="video-cue-fields rounded-3 border bg-light p-3">
+    <div class="small fw-bold text-muted text-uppercase mb-2"><i class="bi bi-stopwatch me-1"></i>Pregunta durante el video</div>
+    <div class="row g-3 align-items-end">
+      <div class="col-sm-4">
+        <label class="form-label small fw-semibold" for="video_start_{{ cue_uid }}">Inicio del video</label>
+        <input id="video_start_{{ cue_uid }}" name="video_start" class="form-control" inputmode="numeric"
+               pattern="\d+(:\d{1,2}){0,2}" placeholder="0:00"
+               value="{{ cue.start|mmss if cue and cue.start else '' }}">
+      </div>
+      <div class="col-sm-4">
+        <label class="form-label small fw-semibold" for="video_question_at_{{ cue_uid }}">Mostrar la pregunta en</label>
+        <input id="video_question_at_{{ cue_uid }}" name="video_question_at" class="form-control" inputmode="numeric"
+               pattern="\d+(:\d{1,2}){0,2}" placeholder="ej. 1:35"
+               value="{{ cue.question_at|mmss if cue and cue.question_at else '' }}">
+      </div>
+      <div class="col-sm-4">
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" role="switch" name="video_pause_on_question"
+                 id="video_pause_{{ cue_uid }}" {% if not cue or cue.pause_on_question %}checked{% endif %}>
+          <label class="form-check-label small" for="video_pause_{{ cue_uid }}">Pausar el video al mostrarla</label>
+        </div>
+      </div>
+    </div>
+    <div class="form-text mt-2">
+      Usa segundos o mm:ss. Si dejas vacío "Mostrar la pregunta en", la pregunta se ve desde el inicio.
+      Solo funciona con YouTube, Vimeo o archivos MP4/WEBM.
+    </div>
+  </div>
+</div>

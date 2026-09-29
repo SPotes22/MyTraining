@@ -363,23 +363,21 @@
 
                                 {% if q.video_url %}
                                 <div class="mb-3">
-                                    {% set yt_url = q.video_url %}
-                                    {% if 'youtu.be/' in yt_url %}
-                                      {% set yt_id = yt_url.split('youtu.be/')[-1].split('?')[0] %}
-                                      {% set embed_url = 'https://www.youtube.com/embed/' + yt_id %}
-                                    {% elif 'youtube.com/watch' in yt_url %}
-                                      {% set yt_id = yt_url.split('v=')[-1].split('&')[0] %}
-                                      {% set embed_url = 'https://www.youtube.com/embed/' + yt_id %}
-                                    {% elif 'youtube.com/embed/' in yt_url %}
-                                      {% set embed_url = yt_url %}
-                                    {% else %}
-                                      {% set embed_url = yt_url %}
+                                    {% set cue = q.video_cue %}
+                                    {% if cue.has_cue %}
+                                      <div class="small text-muted mb-2">
+                                        <i class="bi bi-stopwatch me-1 text-primary"></i>La pregunta apareció en <strong>{{ cue.question_at_label }}</strong> del video{% if cue.pause_on_question %} (con pausa automática){% endif %}.
+                                      </div>
                                     {% endif %}
                                     <div class="ratio ratio-16x9 rounded overflow-hidden shadow-sm" style="max-width: 500px;">
-                                        <iframe src="{{ embed_url }}{% if q.video_timestamp %}?start={{ q.video_timestamp }}{% endif %}"
+                                        {% if cue.provider == 'file' %}
+                                        <video controls preload="metadata" src="{{ video_embed_src(cue) }}"></video>
+                                        {% else %}
+                                        <iframe src="{{ video_embed_src(cue) }}"
                                                 allowfullscreen
                                                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                                                 loading="lazy"></iframe>
+                                        {% endif %}
                                     </div>
                                 </div>
                                 {% endif %}

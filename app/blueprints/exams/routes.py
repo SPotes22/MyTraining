@@ -738,6 +738,7 @@ def session_report(session_id):
             'image_url': snap.image_url,
             'video_url': snap.video_url,
             'video_timestamp': snap.video_timestamp,
+            'video_cue': snap.video_cue,
             'options_data': snap.options_data,
             'matching_data': snap.matching_data,
             'ordering_data': snap.ordering_data,
