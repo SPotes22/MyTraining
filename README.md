@@ -50,10 +50,13 @@ Puntos de progreso clicables arriba de cada pregunta — de un vistazo sabes qu�
 ```bash
 python -m venv venv
 ./venv/Scripts/activate        # en Windows (Git Bash: source venv/Scripts/activate)
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
+pre-commit install             # escaneo de secretos (GitGuardian) antes de cada commit y push
 cp env.example .env
 python run.py
 ```
+
+> 🔐 El hook de **ggshield** necesita una clave de GitGuardian (`ggshield auth login` o `GITGUARDIAN_API_KEY`). En GitHub corre el mismo escaneo en cada push. Si detecta algo, no lo saltes: lee el [Manual de desarrollo §2.4](docs/MANUAL_DESARROLLO_Y_DEPURACION_2026-10-15.md#24-escaneo-de-secretos-gitguardian--ggshield).
 
 Y ya, entras a `http://127.0.0.1:5000`. En desarrollo (`APP_ENV=development`, el valor por defecto) se siembra un profesor demo y puedes crearte una cuenta de tipo **Profesor / Instructor** desde "Crear Cuenta".
 

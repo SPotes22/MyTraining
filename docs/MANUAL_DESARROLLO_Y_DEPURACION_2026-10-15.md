@@ -48,7 +48,8 @@
 
 ```bash
 python3.13 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt pytest
+pip install -r requirements-dev.txt   # app + pytest + pre-commit
+pre-commit install                     # escaneo de secretos antes de commit y push (§2.4)
 cp env.example .env          # APP_ENV=development por defecto
 python run.py                # http://127.0.0.1:5000 , debug activo, datos demo
 ```
@@ -76,6 +77,36 @@ La base queda en `instance/database.db`: las rutas `sqlite:///` relativas se res
 ### 2.3 Navegador real (Playwright)
 
 En los contenedores de Claude Code hay Chromium en `/opt/pw-browsers` y Playwright en Node (`/opt/node22/lib/node_modules/playwright`). Úsalo para verificar cambios de JS, de CSRF o de sockets que los tests de Flask no ejecutan. No ejecutes `playwright install`.
+
+### 2.4 Escaneo de secretos (GitGuardian / ggshield)
+
+El repositorio revisa secretos en dos puntos, ambos con ggshield 1.56.0 y la misma configuración (`.gitguardian.yaml`):
+
+| Dónde | Archivo | Cuándo corre | Qué revisa |
+|---|---|---|---|
+| Tu máquina | `.pre-commit-config.yaml` | Al hacer `git commit` y `git push` | Lo que vas a commitear y los commits que vas a subir |
+| GitHub Actions | `.github/workflows/secret-scan.yml` | En cada push y pull request | Los commits nuevos del push o del PR |
+
+**Puesta en marcha (una vez por clon):**
+
+```bash
+pip install -r requirements-dev.txt
+pre-commit install                    # instala los hooks pre-commit y pre-push
+ggshield auth login                   # o: export GITGUARDIAN_API_KEY=<CLAVE>
+```
+
+ggshield lo instala `pre-commit` en su propio entorno la primera vez. **Sin clave de API el hook falla y bloquea el commit**: es intencional.
+
+**Si el escaneo detecta algo:**
+
+1. **No lo silencies.** Quita el valor del archivo y sustitúyelo por un marcador `<CLAVE>` o por una variable de entorno (invariante I-13).
+2. Si el valor era real, **rótalo**: cámbialo en el servicio correspondiente. Quitarlo del archivo no basta, porque puede seguir en el historial.
+3. Si ya se publicó y es un secreto de la app, agrega su SHA-256 a `LEAKED_SECRET_SHA256` en `app/config.py`.
+4. Solo si es un falso positivo comprobado, agrega en `.gitguardian.yaml` → `ignored_matches` el **SHA-256 que muestra ggshield** (nunca el valor), con un comentario que explique por qué.
+
+**Escanear todo el historial** (por ejemplo, tras un incidente): `ggshield secret scan repo .`
+
+> **Agentes:** en entornos sin `GITGUARDIAN_API_KEY` el hook no se puede ejecutar. No lo desinstales ni uses `--no-verify` / `SKIP=` para saltarlo. Deja que el CI haga el escaneo y avisa al usuario de que no se ejecutó en local.
 
 ---
 
@@ -356,7 +387,7 @@ def app_ctx(tmp_path):
 
 - [ ] `pytest` en verde, con tests nuevos para lo cambiado (incluido el acceso cruzado).
 - [ ] Para cambios de JS, CSRF o sockets: verificación en navegador real (§2.3).
-- [ ] Sin archivos de `uploads/`, `.db` ni `.env` en el commit.
+- [ ] Sin archivos de `uploads/`, `.db` ni `.env` en el commit, ni secretos literales; el hook de ggshield (§2.4) pasa, o el CI lo revisará si no hay clave local.
 - [ ] Si cerraste o cambiaste un requisito, actualiza su estado en el SRS (y los conteos de §1.6).
 - [ ] Si cambiaste un límite, una variable o el despliegue, actualiza el Manual de administrador y `env.example`.
 - [ ] Mensaje de commit que diga **qué** y **por qué**, citando el requisito (RF-, RN-, RNF-).

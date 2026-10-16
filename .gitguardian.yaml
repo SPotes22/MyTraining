@@ -1,0 +1,22 @@
+# Configuración de ggshield (GitGuardian) — https://docs.gitguardian.com/ggshield-docs
+# La usan el hook local (.pre-commit-config.yaml) y el CI (.github/workflows/secret-scan.yml).
+version: 2
+
+# Un incidente hace fallar el commit, el push o el job de CI.
+exit_zero: false
+
+secret:
+  # Solo se excluye lo que nunca se versiona. NO excluyas docs/ ni tests/:
+  # el incidente del 16-oct-2026 vino precisamente de la documentación.
+  ignored_paths:
+    - 'venv/**'
+    - '.venv/**'
+    - '**/__pycache__/**'
+    - 'instance/**'
+    - 'app/static/uploads/**'
+
+  # Para silenciar un falso positivo, agrega aquí el SHA-256 que muestra ggshield,
+  # con un comentario que explique por qué no es un secreto. Nunca el valor en claro.
+  ignored_matches: []
+
+  show_secrets: false

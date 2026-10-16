@@ -213,6 +213,19 @@ curl -s localhost:8080/healthz
 | Eventos de sala | Líneas `[JOIN]`, `[START]`, `[PAUSE]`, `[RESUME]`, `[LEAVE]` y `[ALERT]` en el log |
 | Disco | Alerta de GCP al 80 % de uso del disco persistente |
 | Señales de que toca crecer | `database is locked` en los logs; quejas de envíos lentos con salas grandes (§8) |
+| Secretos en el código | Panel de GitGuardian y el job **Secret scan (GitGuardian)** de GitHub Actions (§6.1) |
+
+### 6.1 Escaneo de secretos con GitGuardian
+
+El repositorio escanea secretos en cada push y pull request con GitHub Actions y, en local, antes de cada commit (detalle técnico en el Manual de desarrollo §2.4). Para que el CI funcione:
+
+1. En [dashboard.gitguardian.com](https://dashboard.gitguardian.com) → **API** → **Personal access tokens**, crea un token con permiso de escaneo (`scan`).
+2. En GitHub → repositorio → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**, crea `GITGUARDIAN_API_KEY` con ese token.
+3. Haz un push y comprueba que el job **Secret scan (GitGuardian)** termine en verde.
+
+Mientras no exista ese secreto, el job falla en cada push: es la señal de que falta configurarlo.
+
+**Ante un incidente:** rota la credencial afectada, quítala del código (ver el Manual de desarrollo §2.4) y cierra el incidente en el panel de GitGuardian como *resuelto*.
 
 ---
 
@@ -276,6 +289,8 @@ Las columnas nuevas de la base se agregan solas al arrancar (`ensure_schema`). S
 - [ ] Decidido si habrá menores de edad (RL-05)
 - [ ] Decidido si se abre el auto-registro de profesores (§4.2)
 - [ ] Profesores informados de las limitaciones (Manual de usuario §4), en especial que no hay temporizador
+- [ ] Secreto `GITGUARDIAN_API_KEY` configurado en GitHub y job **Secret scan (GitGuardian)** en verde (§6.1)
+- [ ] Incidentes abiertos en GitGuardian revisados y cerrados
 
 ### Cada mes
 

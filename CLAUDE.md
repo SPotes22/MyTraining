@@ -13,7 +13,7 @@ Plataforma Flask (SSR con Jinja2) + Socket.IO + SQLite para capacitaciones y ex�
 - **Ningún secreto literal** (ni de ejemplo) en código, tests, `env.example` o docs: usa marcadores `<CLAVE>` o valores generados. Un valor filtrado se agrega como SHA-256 a `LEAKED_SECRET_SHA256`.
 - Hay **dos caminos de calificación** (`grade_answer` en vivo y `submit_exam` final): cambia ambos.
 
-Comandos: `pip install -r requirements.txt pytest` · `pytest` (debe quedar en verde) · `python run.py` (dev).
+Comandos: `pip install -r requirements-dev.txt` · `pre-commit install` (escaneo de secretos con ggshield; requiere `GITGUARDIAN_API_KEY`, nunca lo saltes con `--no-verify`) · `pytest` (debe quedar en verde) · `python run.py` (dev).
 
 Documentación: `docs/SRS_2026-10-15.md` (requisitos y estado) · `docs/SAD_2026-10-15.md` (arquitectura) · `docs/AUDITORIA_PREPRODUCCION.md` (límites medidos) · `docs/MANUAL_ADMINISTRADOR_2026-10-15.md` · `docs/MANUAL_USUARIO_2026-10-15.md`.
 

@@ -1,0 +1,4 @@
+# Dependencias de desarrollo (no van en la imagen de producción)
+-r requirements.txt
+pytest==9.1.1
+pre-commit==4.7.0

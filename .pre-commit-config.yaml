@@ -1,0 +1,13 @@
+# Hooks locales. Instalación (una vez por clon):
+#   pip install -r requirements-dev.txt
+#   pre-commit install            # instala los hooks pre-commit y pre-push
+#   export GITGUARDIAN_API_KEY=<CLAVE>   # o: ggshield auth login
+# Ver docs/MANUAL_DESARROLLO_Y_DEPURACION_2026-10-15.md §2.4
+default_install_hook_types: [pre-commit, pre-push]
+
+repos:
+  - repo: https://github.com/GitGuardian/ggshield
+    rev: v1.56.0
+    hooks:
+      - id: ggshield          # revisa lo que vas a commitear
+      - id: ggshield-push     # revisa los commits que vas a subir
