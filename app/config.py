@@ -1,5 +1,7 @@
 # app/config.py
+import hashlib
 import os
+import secrets
 
 def _load_env_file(dotenv_path='.env'):
     if os.path.exists(dotenv_path):
@@ -30,18 +32,34 @@ def _env_int(name, default):
         return default
 
 
-# Valores de ejemplo que NUNCA deben llegar a pre-producción/producción.
-INSECURE_DEFAULTS = {
-    'SECRET_KEY': 'clave-secreta-capacitacion-2026',
-    'SUPERUSER_PASSWORD': 'admin1234',
-}
+# SHA-256 de secretos de ejemplo que se publicaron en el historial del repositorio
+# (SECRET_KEY y contraseñas de superusuario/profesor demo de versiones anteriores).
+# Se guardan como hash para no volver a publicar los valores; fuera de desarrollo
+# la app se niega a arrancar si alguno sigue en uso (p. ej. un .env viejo copiado).
+LEAKED_SECRET_SHA256 = frozenset({
+    '8491107a0633480aafe6c324864df6ae92130218dded78061c8975f86e9dd10e',
+    'ac9689e2272427085e35b9d3e3e8bed88cb3434828b43b86fc0596cad4c6e270',
+    '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9',
+})
+
+
+def is_leaked_secret(value):
+    return bool(value) and hashlib.sha256(value.encode('utf-8')).hexdigest() in LEAKED_SECRET_SHA256
+
+
+def generate_dev_password():
+    """Contraseña aleatoria para cuentas creadas en desarrollo sin clave definida."""
+    return secrets.token_urlsafe(12)
 
 
 class Config:
     # development | preproduction | production
     APP_ENV = os.environ.get('APP_ENV', 'development').strip().lower()
 
-    SECRET_KEY = os.environ.get('SECRET_KEY', INSECURE_DEFAULTS['SECRET_KEY'])
+    # Sin SECRET_KEY definida se genera una aleatoria por proceso: válido en desarrollo
+    # (las sesiones se cierran al reiniciar); fuera de desarrollo validate_config la exige.
+    SECRET_KEY_FROM_ENV = bool(os.environ.get('SECRET_KEY'))
+    SECRET_KEY = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///database.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     # SQLite: esperar hasta 30 s por el bloqueo de escritura en vez de fallar
@@ -52,7 +70,10 @@ class Config:
     )
 
     SUPERUSER_EMAIL = os.environ.get('SUPERUSER_EMAIL', 'admin@capacitacion.com')
-    SUPERUSER_PASSWORD = os.environ.get('SUPERUSER_PASSWORD', INSECURE_DEFAULTS['SUPERUSER_PASSWORD'])
+    # Sin valor: en desarrollo se genera una contraseña aleatoria y se muestra una vez en consola.
+    SUPERUSER_PASSWORD = os.environ.get('SUPERUSER_PASSWORD') or None
+    # Contraseña del profesor demo (SEED_DEMO_DATA). Sin valor: aleatoria, mostrada en consola.
+    DEMO_INSTRUCTOR_PASSWORD = os.environ.get('DEMO_INSTRUCTOR_PASSWORD') or None
     SUPERUSER_USERNAME = os.environ.get('SUPERUSER_USERNAME', 'SuperAdmin')
     # Si es true, la contraseña del superusuario se re-sincroniza desde .env en cada arranque.
     SUPERUSER_RESET_ON_BOOT = _env_bool('SUPERUSER_RESET_ON_BOOT', APP_ENV == 'development')
@@ -88,17 +109,18 @@ class Config:
 
 
 def validate_config(config):
-    """Falla al arrancar si un entorno no-dev usa secretos de ejemplo."""
+    """Falla al arrancar si un entorno no-dev no define sus secretos o usa uno ya publicado."""
     if config.get('APP_ENV', 'development') == 'development' or config.get('TESTING'):
         return
-    problems = [
-        key for key, insecure in INSECURE_DEFAULTS.items()
-        if not config.get(key) or config.get(key) == insecure
-    ]
-    if len(config.get('SECRET_KEY') or '') < 32:
-        problems.append('SECRET_KEY (mínimo 32 caracteres)')
+    problems = []
+    secret_key = config.get('SECRET_KEY') or ''
+    if not config.get('SECRET_KEY_FROM_ENV', True) or len(secret_key) < 32 or is_leaked_secret(secret_key):
+        problems.append('SECRET_KEY (propia, mínimo 32 caracteres)')
+    password = config.get('SUPERUSER_PASSWORD') or ''
+    if len(password) < config.get('MIN_PASSWORD_LENGTH', 8) or is_leaked_secret(password):
+        problems.append('SUPERUSER_PASSWORD (propia, mínimo %d caracteres)' % config.get('MIN_PASSWORD_LENGTH', 8))
     if problems:
         raise RuntimeError(
             'Configuración insegura para APP_ENV=%s: define %s en el entorno.'
-            % (config.get('APP_ENV'), ', '.join(sorted(set(problems))))
+            % (config.get('APP_ENV'), ', '.join(problems))
         )

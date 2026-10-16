@@ -36,7 +36,8 @@
 | I-8 | **Variables de servidor dentro de `<script>` van con `\|tojson`** | Autoescape HTML no basta en contexto JS | Plantillas |
 | I-9 | **No borres en cascada datos con historial**: preguntas o bancos con respuestas, exámenes con intentos, profesores con contenido | RN-10 y RN-13, y SQLite reutiliza ids (§8) | `questions/routes.py`, `exams/routes.py`, `admin/routes.py` |
 | I-10 | **No versiones datos de usuario**: `app/static/uploads/`, `*.db`, `.env` | Fuga de datos | `.gitignore` |
-| I-11 | **Nada de secretos por defecto fuera de desarrollo.** Si agregas un secreto, súmalo a `INSECURE_DEFAULTS` | `validate_config` bloquea el arranque inseguro | `app/config.py` |
+| I-11 | **Nada de secretos por defecto fuera de desarrollo.** Si agregas un secreto, exígelo en `validate_config`; si un valor llegó a publicarse, agrega su SHA-256 a `LEAKED_SECRET_SHA256` | `validate_config` bloquea el arranque inseguro | `app/config.py` |
+| I-13 | **Ningún secreto literal en el repositorio**: ni contraseñas de ejemplo en código, tests, `env.example` o documentación. Usa marcadores (`<CLAVE>`), valores generados (`secrets.token_urlsafe`) o hashes, como `LEAKED_SECRET_SHA256` | GitGuardian marcó un par correo/contraseña de ejemplo (incidente del 16 oct 2026) | Todo el repo |
 | I-12 | **Código portable a PostgreSQL**: nada de SQL específico de SQLite fuera de `extensions.py` y `ensure_schema`; respeta las llaves foráneas aunque SQLite no las aplique | La migración prevista debe ser un cambio de `DATABASE_URL` | Modelos y servicios |
 
 ---
@@ -52,10 +53,11 @@ cp env.example .env          # APP_ENV=development por defecto
 python run.py                # http://127.0.0.1:5000 , debug activo, datos demo
 ```
 
-En desarrollo se crean:
+En desarrollo se crean el superusuario (correo `SUPERUSER_EMAIL`) y un profesor demo (`profesor@capacitacion.com`) con un banco y un examen. **No hay contraseñas fijas:**
 
-- el superusuario `admin@capacitacion.com` / `admin1234`;
-- el profesor demo `profesor@capacitacion.com` / `admin123`, con un banco y un examen.
+- si `SUPERUSER_PASSWORD` o `DEMO_INSTRUCTOR_PASSWORD` están vacías en tu `.env`, la app genera contraseñas aleatorias y las imprime **una sola vez** en la consola al crear las cuentas;
+- si las pierdes, borra `instance/database.db` o restablece la clave con la consola (§2.2);
+- nunca escribas credenciales reales ni de ejemplo en código, tests o documentación (I-13).
 
 La base queda en `instance/database.db`: las rutas `sqlite:///` relativas se resuelven contra `instance/`.
 
@@ -63,9 +65,9 @@ La base queda en `instance/database.db`: las rutas `sqlite:///` relativas se res
 
 | Tarea | Comando |
 |---|---|
-| Todos los tests | `pytest` (34 tests, ~25 s) |
+| Todos los tests | `pytest` (35 tests, ~30 s) |
 | Un archivo / un test | `pytest tests/test_preproduction_hardening.py -k socket -s` |
-| Arrancar como pre-producción en local | `APP_ENV=preproduction SESSION_COOKIE_SECURE=0 SECRET_KEY=$(python -c 'import secrets;print(secrets.token_hex(32))') SUPERUSER_PASSWORD=Clave-Larga-1 gunicorn -c gunicorn.conf.py wsgi:app` |
+| Arrancar como pre-producción en local | `APP_ENV=preproduction SESSION_COOKIE_SECURE=0 SECRET_KEY=$(python -c 'import secrets;print(secrets.token_hex(32))') SUPERUSER_PASSWORD="$(python -c 'import secrets;print(secrets.token_urlsafe(16))')" gunicorn -c gunicorn.conf.py wsgi:app` |
 | Salud | `curl localhost:8080/healthz` |
 | Prueba de carga | `scripts/loadtest/` (instrucciones en la Auditoría §6) |
 | Respaldo | `python scripts/backup_sqlite.py instance/database.db backups/` |

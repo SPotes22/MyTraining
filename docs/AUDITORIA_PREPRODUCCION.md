@@ -11,8 +11,8 @@ Este documento resume qué se revisó, qué se corrigió en el código, qué lí
 | | Antes | Ahora |
 |---|---|---|
 | Hallazgos de seguridad de la Fase 1 (SRS V3 §9) | 6 abiertos | **6 cerrados** |
-| Otros hallazgos de seguridad encontrados en esta auditoría | — | 10 cerrados |
-| Tests automatizados | 19 | **34** (todos pasan) |
+| Otros hallazgos de seguridad encontrados en esta auditoría | — | 11 cerrados |
+| Tests automatizados | 19 | **35** (todos pasan) |
 | Prueba de carga | no existía | hecha (§4) |
 | Arranque de producción | `debug=True` en `0.0.0.0` | Gunicorn, 1 worker, `/healthz`, Dockerfile |
 | Respaldo de la base | no existía | `scripts/backup_sqlite.py` con retención |
@@ -31,7 +31,7 @@ Este documento resume qué se revisó, qué se corrigió en el código, qué lí
 | S-02 | `/resultados/<id>` mostraba intentos ajenos con las respuestas correctas | Solo el estudiante dueño, el profesor del examen o un admin; el resto recibe 403 | `exams/routes.py` |
 | S-03 | Lobby, cierre de sala y `/session/status` sin control de propiedad | 403 si no eres el profesor dueño; `/session/status` ya no lista nombres a no-dueños | `exams/routes.py` |
 | S-04 | Sin CSRF | `CSRFProtect` global; `base.html` inyecta el token en todo POST (formularios, `form.submit()` y `fetch`). Verificado en Chromium real | `extensions.py`, `__init__.py`, `base.html` |
-| S-05 | `SECRET_KEY` y `admin1234` por defecto; la clave del superusuario se reescribía en cada arranque; profesor semilla con `admin123` | Fuera de `APP_ENV=development` la app **no arranca** con secretos de ejemplo o `SECRET_KEY` de menos de 32 caracteres. La clave del superusuario y los datos demo quedan apagados por defecto | `config.py`, `__init__.py` |
+| S-05 | `SECRET_KEY` y contraseña de superusuario fijas por defecto; la clave del superusuario se reescribía en cada arranque; profesor semilla con contraseña fija | Fuera de `APP_ENV=development` la app **no arranca** con secretos de ejemplo o `SECRET_KEY` de menos de 32 caracteres. La clave del superusuario y los datos demo quedan apagados por defecto | `config.py`, `__init__.py` |
 | S-06 | Los sockets usaban el `student_id` que mandaba el navegador: un estudiante podía suplantar a otro. Cualquiera podía iniciar, pausar o reanudar una sala ajena y espiar las estadísticas de otro profesor | La identidad sale de la cookie de sesión. `teacher_join`, `start`, `pause`, `resume` y `subscribe_teacher_stats` exigen ser el profesor dueño | `realtime/sockets.py` |
 
 ### 2.2 Encontrados en esta auditoría
@@ -47,6 +47,7 @@ Este documento resume qué se revisó, qué se corrigió en el código, qué lí
 | S-13 | Cualquier usuario, incluso invitados, podía subir archivos de 50 MB a `/learning/api/upload` (riesgo de llenar el disco) | Solo instructores/admin. `MAX_CONTENT_LENGTH` (antes declarado pero nunca aplicado) ahora es global, con respuesta 413 legible |
 | S-14 | Un video MP4 y un JSON de usuarios versionados en git | Retirados del índice; `app/static/uploads/` en `.gitignore` |
 | S-15 | Nombre del estudiante embebido en JS sin `tojson` | Escapado con `tojson` |
+| S-17 | *(16 oct, GitGuardian)* Pares correo/contraseña de ejemplo escritos en la documentación (commit `da3f78f`) y contraseñas fijas en el código | Sin contraseñas literales en código, docs ni `env.example`: en desarrollo se generan aleatorias; fuera de desarrollo se exigen y se rechazan las ya publicadas (comparación por SHA-256) |
 | S-16 | *(15 oct)* Borrar un profesor con contenido y crear otro: SQLite reutiliza el id y **el nuevo profesor hereda los exámenes, bancos y resultados del anterior** | El panel rechaza borrar profesores con exámenes, bancos, clases o capacitaciones |
 
 Además: cabeceras `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`; `ProxyFix` para correr detrás de Nginx o del balanceador de GCP.
@@ -150,7 +151,7 @@ El SAD (ADR-003) ya prevé la migración sin tocar la lógica de negocio. La pre
 ## 6. Cómo reproducir
 
 ```bash
-pytest                                   # 34 tests
+pytest                                   # 35 tests
 APP_ENV=preproduction SECRET_KEY=... SUPERUSER_PASSWORD=... \
   gunicorn -c gunicorn.conf.py wsgi:app  # arranque pre-producción
 curl localhost:8080/healthz              # {"status":"ok","env":"preproduction"}

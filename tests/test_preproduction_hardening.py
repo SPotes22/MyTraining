@@ -125,13 +125,41 @@ def test_students_cannot_upload_media(app_ctx):
     assert c.post('/learning/api/upload').status_code == 403
 
 
-def test_validate_config_rejects_insecure_defaults():
-    base = {'APP_ENV': 'preproduction', 'SECRET_KEY': 'clave-secreta-capacitacion-2026',
-            'SUPERUSER_PASSWORD': 'admin1234'}
+def test_validate_config_requires_own_secrets(monkeypatch):
+    import hashlib
+    from app import config as config_module
+    good = {'APP_ENV': 'preproduction', 'SECRET_KEY_FROM_ENV': True, 'SECRET_KEY': 'x' * 40,
+            'SUPERUSER_PASSWORD': 'Otra-Clave-Segura', 'MIN_PASSWORD_LENGTH': 8}
+    validate_config(good)
+
+    # Secretos ausentes, generados al vuelo o demasiado cortos: no arranca.
+    for bad in ({'SECRET_KEY_FROM_ENV': False}, {'SECRET_KEY': 'corta'},
+                {'SUPERUSER_PASSWORD': None}, {'SUPERUSER_PASSWORD': '1234'}):
+        with pytest.raises(RuntimeError):
+            validate_config({**good, **bad})
+
+    # Un valor que ya se publicó (su hash está en la lista) tampoco se acepta.
+    leaked = 'valor-publicado-en-el-historial'
+    monkeypatch.setattr(config_module, 'LEAKED_SECRET_SHA256',
+                        frozenset({hashlib.sha256(leaked.encode()).hexdigest()}))
     with pytest.raises(RuntimeError):
-        validate_config(base)
-    validate_config({'APP_ENV': 'development', **{k: v for k, v in base.items() if k != 'APP_ENV'}})
-    validate_config({'APP_ENV': 'preproduction', 'SECRET_KEY': 'x' * 40, 'SUPERUSER_PASSWORD': 'Otra-Clave-Segura'})
+        validate_config({**good, 'SUPERUSER_PASSWORD': leaked})
+
+    # En desarrollo no se exige nada.
+    validate_config({'APP_ENV': 'development'})
+
+
+def test_dev_superuser_gets_random_password_when_none_configured(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(Config, 'SQLALCHEMY_DATABASE_URI', f"sqlite:///{tmp_path/'dev.db'}")
+    monkeypatch.setattr(Config, 'SUPERUSER_PASSWORD', None)
+    app = create_app()
+    printed = capsys.readouterr().out
+    assert 'Contraseña temporal generada' in printed
+    temp = printed.split('(no se volverá a mostrar): ')[1].split()[0]
+    with app.app_context():
+        su = User.query.filter_by(role='superuser').first()
+        assert su.check_password(temp)
+        assert len(temp) >= 12
 
 
 def test_socket_student_cannot_impersonate_or_control_room(app_ctx):

@@ -10,6 +10,7 @@ Plataforma Flask (SSR con Jinja2) + Socket.IO + SQLite para capacitaciones y ex�
 - Rutas: verifica rol **y** propiedad del recurso; agrega un test de acceso cruzado (403).
 - CSRF siempre activo; `base.html` inyecta el token en formularios y `fetch`.
 - No borres en cascada datos con historial (RN-10, RN-13); no versiones `uploads/`, `*.db` ni `.env`.
+- **Ningún secreto literal** (ni de ejemplo) en código, tests, `env.example` o docs: usa marcadores `<CLAVE>` o valores generados. Un valor filtrado se agrega como SHA-256 a `LEAKED_SECRET_SHA256`.
 - Hay **dos caminos de calificación** (`grade_answer` en vivo y `submit_exam` final): cambia ambos.
 
 Comandos: `pip install -r requirements.txt pytest` · `pytest` (debe quedar en verde) · `python run.py` (dev).

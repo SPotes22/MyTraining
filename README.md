@@ -60,7 +60,7 @@ Y ya, entras a `http://127.0.0.1:5000`. En desarrollo (`APP_ENV=development`, el
 ### Correr las pruebas
 
 ```bash
-pytest          # 34 tests
+pytest          # 35 tests
 ```
 
 ## 🚀 Pre-producción
@@ -71,13 +71,13 @@ Un solo contenedor, Gunicorn con **1 worker** (las salas en vivo viven en memori
 docker build -t mytraining .
 docker run -d -p 8080:8080 \
   -e SECRET_KEY="$(python -c 'import secrets;print(secrets.token_hex(32))')" \
-  -e SUPERUSER_EMAIL=tu@correo.com -e SUPERUSER_PASSWORD='una-clave-larga' \
+  -e SUPERUSER_EMAIL=tu@correo.com -e SUPERUSER_PASSWORD="$(cat /ruta/segura/superuser_password)" \
   -v mytraining-data:/data -v mytraining-uploads:/srv/app/app/static/uploads \
   mytraining
 curl localhost:8080/healthz
 ```
 
-- Fuera de `development` **la app no arranca** con la `SECRET_KEY` o la clave de superusuario de ejemplo.
+- Fuera de `development` **la app no arranca** sin `SECRET_KEY` y `SUPERUSER_PASSWORD` propias. En desarrollo, si las dejas vacías, se generan aleatorias y la contraseña se imprime una vez en la consola.
 - Pon delante un proxy con HTTPS (Nginx, Caddy o el balanceador de GCP); las cookies son `Secure`.
 - Los profesores los crea el superusuario. Para permitir que se registren solos: `ALLOW_INSTRUCTOR_SIGNUP=true`.
 - Respaldo diario: `python scripts/backup_sqlite.py /data/mytraining.db /backups --keep-days 30`.

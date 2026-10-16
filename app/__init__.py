@@ -2,7 +2,7 @@
 from flask import Flask, jsonify
 from sqlalchemy import inspect, text
 from werkzeug.middleware.proxy_fix import ProxyFix
-from app.config import Config, validate_config
+from app.config import Config, validate_config, generate_dev_password
 from flask_wtf.csrf import CSRFError
 from app.extensions import db, login_manager, socketio, csrf
 
@@ -71,14 +71,19 @@ def init_db():
 
     superuser = User.query.filter((User.email == superuser_email) | (User.role == 'superuser')).first()
     if not superuser:
+        generated = not superuser_pass
+        superuser_pass = superuser_pass or generate_dev_password()
         superuser = User(username=superuser_name, email=superuser_email, role='superuser')
         superuser.set_password(superuser_pass)
         db.session.add(superuser)
         db.session.commit()
         print(f"Superusuario '{superuser_name}' ({superuser_email}) creado exitosamente.")
-    elif Config.SUPERUSER_RESET_ON_BOOT:
-        # Solo en desarrollo por defecto: en pre-producción la contraseña cambiada
-        # desde la app no debe revertirse en cada reinicio del contenedor.
+        if generated:
+            # Solo ocurre en desarrollo: fuera de él validate_config exige SUPERUSER_PASSWORD.
+            print(f"  Contraseña temporal generada (no se volverá a mostrar): {superuser_pass}")
+    elif Config.SUPERUSER_RESET_ON_BOOT and superuser_pass:
+        # Solo en desarrollo por defecto y solo si hay una clave definida en el entorno:
+        # en pre-producción la contraseña no debe revertirse en cada reinicio.
         superuser.role = 'superuser'
         superuser.email = superuser_email
         superuser.username = superuser_name
@@ -86,8 +91,11 @@ def init_db():
         db.session.commit()
 
     if Config.SEED_DEMO_DATA and not User.query.filter_by(role='instructor').first():
+        demo_pass = Config.DEMO_INSTRUCTOR_PASSWORD or generate_dev_password()
         teacher = User(username="Profesor Principal", email="profesor@capacitacion.com", role="instructor")
-        teacher.set_password("admin123")
+        teacher.set_password(demo_pass)
+        if not Config.DEMO_INSTRUCTOR_PASSWORD:
+            print(f"Profesor demo profesor@capacitacion.com — contraseña temporal: {demo_pass}")
         db.session.add(teacher)
         db.session.commit()
 

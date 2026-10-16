@@ -57,7 +57,7 @@ docker run -d --name mytraining --restart unless-stopped \
   -e APP_ENV=preproduction \
   -e SECRET_KEY="$(python3 -c 'import secrets;print(secrets.token_hex(32))')" \
   -e SUPERUSER_EMAIL=admin@tu-dominio.com \
-  -e SUPERUSER_PASSWORD='una-clave-larga-y-unica' \
+  -e SUPERUSER_PASSWORD="$(cat /ruta/segura/superuser_password)" \
   -e PROXY_FIX_HOPS=1 \
   -v mytraining-data:/data \
   -v mytraining-uploads:/srv/app/app/static/uploads \
@@ -68,7 +68,8 @@ Notas:
 
 - **Guarda la `SECRET_KEY`** en un gestor de secretos (por ejemplo Secret Manager). Si cambia, se cierran todas las sesiones.
 - El puerto se publica solo en `127.0.0.1`: el tráfico de Internet debe pasar por el proxy HTTPS (§2.3).
-- Si `SECRET_KEY` o `SUPERUSER_PASSWORD` tienen los valores de ejemplo, el contenedor **no arranca** y el log dice `Configuración insegura para APP_ENV=preproduction`. Es intencional.
+- Si falta `SECRET_KEY` o `SUPERUSER_PASSWORD`, si son demasiado cortas o si coinciden con un valor que alguna vez se publicó en el repositorio, el contenedor **no arranca** y el log dice `Configuración insegura para APP_ENV=preproduction`. Es intencional.
+- Guarda la contraseña del superusuario en un archivo con permisos `600` fuera del repositorio, o en Secret Manager, nunca en el historial del shell.
 - Comprueba con `curl -s localhost:8080/healthz`. La respuesta esperada es `{"env":"preproduction","status":"ok"}`.
 
 ### 2.3 Proxy inverso (Nginx)
@@ -152,7 +153,7 @@ from app.models import User
 app = create_app()
 with app.app_context():
     u = User.query.filter_by(email='persona@correo.com').first()
-    u.set_password('NuevaClaveTemporal2026')   # restablecer contraseña
+    u.set_password(input('Nueva contraseña: '))   # restablecer contraseña (no la dejes en el historial del shell)
     # u.role = 'instructor'                     # promover estudiante a profesor
     db.session.commit()
     print('Listo:', u.email, u.role)
