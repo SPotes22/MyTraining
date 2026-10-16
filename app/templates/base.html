@@ -28,6 +28,38 @@
     >
 
     <!-- Socket.IO -->
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <script>
+    /* CSRF (RNF-03): añade el token a todo POST sin tocar cada plantilla.
+       - formularios enviados por el usuario (evento submit, fase de captura)
+       - formularios enviados por código con form.submit() (no disparan "submit")
+       - fetch() hacia el mismo origen */
+    (function () {
+      var TOKEN = document.querySelector('meta[name="csrf-token"]').content;
+      function addToken(form) {
+        if (!form || (form.method || '').toLowerCase() !== 'post') return;
+        if (form.querySelector('input[name="csrf_token"]')) return;
+        var input = document.createElement('input');
+        input.type = 'hidden'; input.name = 'csrf_token'; input.value = TOKEN;
+        form.appendChild(input);
+      }
+      document.addEventListener('submit', function (e) { addToken(e.target); }, true);
+      var nativeSubmit = HTMLFormElement.prototype.submit;
+      HTMLFormElement.prototype.submit = function () { addToken(this); return nativeSubmit.call(this); };
+      var nativeFetch = window.fetch;
+      window.fetch = function (resource, init) {
+        init = init || {};
+        var method = (init.method || (resource && resource.method) || 'GET').toUpperCase();
+        var url = new URL(typeof resource === 'string' ? resource : resource.url, window.location.href);
+        if (method !== 'GET' && method !== 'HEAD' && url.origin === window.location.origin) {
+          var headers = new Headers(init.headers || (resource && resource.headers) || {});
+          if (!headers.has('X-CSRFToken')) headers.set('X-CSRFToken', TOKEN);
+          init.headers = headers;
+        }
+        return nativeFetch.call(this, resource, init);
+      };
+    })();
+    </script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 
     <style>

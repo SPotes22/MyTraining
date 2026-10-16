@@ -247,7 +247,7 @@ const socket     = io();
 const SESSION_ID = {{ session.id }};
 const ROOM_CODE  = "{{ session.session_code | upper }}";
 const STUDENT_ID = {{ current_user.id }};
-const USERNAME   = "{{ current_user.username }}";
+const USERNAME   = {{ current_user.username|tojson }};
 const TOTAL_Q    = {{ questions_data|length if questions_data else 0 }};
 const EXAM_MODE  = "{{ exam.exam_mode or 'instant_feedback' }}";
 

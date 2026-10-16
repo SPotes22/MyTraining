@@ -9,6 +9,19 @@ from app.realtime.manager import session_manager
 from app.services.exam_content import normalize_room_code, socket_room
 
 
+def _owns_db_session(db_session):
+    """True si el usuario del socket es el profesor dueño del examen (o admin)."""
+    if not db_session or not current_user.is_authenticated:
+        return False
+    if current_user.role in ['superuser', 'admin']:
+        return True
+    return current_user.role == 'instructor' and db_session.exam.instructor_id == current_user.id
+
+
+def _owns_room(room_code):
+    return _owns_db_session(DbExamSession.query.filter_by(session_code=room_code).first())
+
+
 def _mode(session):
     return registry.get(session.mode, socketio, session_manager)
 
@@ -42,11 +55,12 @@ def _emit_teacher_stats_update(session=None, instructor_id=None):
 # ── Instructor: suscribirse a stats ─────────────────────────────────────────
 @socketio.on('subscribe_teacher_stats')
 def handle_subscribe_teacher_stats(data=None):
-    instructor_id = None
-    if current_user.is_authenticated:
-        instructor_id = current_user.id
-    elif data and isinstance(data, dict):
-        instructor_id = data.get('instructor_id')
+    # Antes se aceptaba data['instructor_id'] sin sesión: cualquiera podía espiar
+    # las salas de otro profesor. Ahora solo el profesor autenticado.
+    if not current_user.is_authenticated or current_user.role not in ['instructor', 'superuser', 'admin']:
+        emit(events.ERROR, {'message': 'No autorizado'})
+        return
+    instructor_id = current_user.id
     if instructor_id:
         join_room(f"teacher_{instructor_id}")
         from app.blueprints.exams.routes import get_instructor_active_sessions_summary
@@ -58,6 +72,9 @@ def handle_subscribe_teacher_stats(data=None):
 @socketio.on(events.TEACHER_JOIN)
 def handle_teacher_join(data):
     room_code = normalize_room_code(data.get('room_code'))
+    if not _owns_room(room_code):
+        emit(events.ERROR, {'message': 'Profesor no autorizado'})
+        return
     session = session_manager.set_teacher(room_code, request.sid)
     if not session:
         emit(events.ERROR, {'message': 'Sesión no encontrada'})
@@ -74,8 +91,13 @@ def handle_teacher_join(data):
 @socketio.on(events.JOIN_SESSION_ROOM)
 def handle_student_join(data):
     room_code  = normalize_room_code(data.get('room_code') or data.get('session_code'))
-    student_id = data.get('student_id') or (current_user.id if current_user.is_authenticated else None)
-    username   = data.get('username') or (current_user.username if current_user.is_authenticated else 'Estudiante')
+    # La identidad sale de la cookie de sesión, nunca del payload del cliente
+    # (antes un estudiante podía enviar el student_id de otro y suplantarlo).
+    if not current_user.is_authenticated:
+        emit(events.ERROR, {'message': 'Estudiante no autenticado'})
+        return
+    student_id = current_user.id
+    username   = current_user.username or 'Estudiante'
     if not student_id:
         emit(events.ERROR, {'message': 'Estudiante no autenticado'})
         return
@@ -111,6 +133,9 @@ def handle_start_exam_session(data):
     if not db_session:
         emit(events.ERROR, {'message': 'Sesión no encontrada'})
         return
+    if not _owns_db_session(db_session):
+        emit(events.ERROR, {'message': 'Profesor no autorizado'})
+        return
     db_session.status = 'in_progress'
     db.session.commit()
     session = session_manager.get_or_create_by_db_session(db_session)
@@ -125,6 +150,9 @@ def handle_start_exam_session(data):
 def handle_pause_exam(data):
     """Instructor pausa el examen. Estudiantes reciben 'exam_paused' y bloquean UI."""
     room_code = normalize_room_code(data.get('room_code'))
+    if not _owns_room(room_code):
+        emit(events.ERROR, {'message': 'Profesor no autorizado'})
+        return
     session   = session_manager.get_or_create_by_code(room_code)
     if not session:
         emit(events.ERROR, {'message': 'Sesión no encontrada'})
@@ -142,6 +170,9 @@ def handle_pause_exam(data):
 def handle_resume_exam(data):
     """Instructor reanuda. Estudiantes reciben 'exam_resumed' y desbloquean UI."""
     room_code = normalize_room_code(data.get('room_code'))
+    if not _owns_room(room_code):
+        emit(events.ERROR, {'message': 'Profesor no autorizado'})
+        return
     session   = session_manager.get_or_create_by_code(room_code)
     if not session:
         emit(events.ERROR, {'message': 'Sesión no encontrada'})
@@ -160,8 +191,12 @@ def handle_resume_exam(data):
 def handle_answer_submitted(data):
     room_code  = normalize_room_code(data.get('room_code'))
     session    = session_manager.get_or_create_by_code(room_code)
-    student_id = data.get('student_id') or (current_user.id if current_user.is_authenticated else None)
-    question_id = int(data.get('question_id') or 0)
+    student_id = current_user.id if current_user.is_authenticated else None
+    try:
+        question_id = int(data.get('question_id') or 0)
+    except (TypeError, ValueError):
+        emit(events.ERROR, {'message': 'Pregunta no reconocida'})
+        return
 
     if not session or session.status not in ['in_progress', 'RUNNING']:
         emit(events.ERROR, {'message': 'Examen no disponible o pausado'})
@@ -235,11 +270,19 @@ def handle_next_question(data):
 @socketio.on(events.ANTI_CHEAT_ALERT)
 def handle_anti_cheat_alert(data):
     room_code = normalize_room_code(data.get('room_code') or data.get('session_code'))
-    print(f"[ALERT] {data.get('username')} -> {room_code}: {data.get('reason')}")
-    emit(events.CHEAT_WARNING, {
-        'username': data.get('username'),
-        'reason': data.get('reason'),
-    }, to=socket_room(room_code))
+    if not current_user.is_authenticated:
+        return
+    session = session_manager.get_or_create_by_code(room_code)
+    if not session:
+        return
+    username = current_user.username
+    reason = str(data.get('reason') or '')[:200]
+    print(f"[ALERT] {username} -> {room_code}: {reason}")
+    # Solo al profesor: antes se difundía a toda la sala (los compañeros veían la alerta).
+    db_session = DbExamSession.query.filter_by(session_code=room_code).first()
+    target = session.teacher_sid or (f"teacher_{db_session.exam.instructor_id}" if db_session else None)
+    if target:
+        socketio.emit(events.CHEAT_WARNING, {'username': username, 'reason': reason}, to=target)
 
 
 # ── Disconnect ───────────────────────────────────────────────────────────────

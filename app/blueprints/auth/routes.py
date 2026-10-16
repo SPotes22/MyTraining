@@ -1,9 +1,40 @@
+import threading
+import time
 from datetime import datetime
-from flask import render_template, request, redirect, url_for, flash
+from flask import render_template, request, redirect, url_for, flash, current_app
 from flask_login import login_user, logout_user, login_required, current_user
 from app.extensions import db
 from app.models import User, ExamSession, Bank
 from app.blueprints.auth import auth_bp
+
+# Bloqueo de fuerza bruta en memoria (suficiente con 1 worker; ver gunicorn.conf.py).
+_failed_logins = {}
+_failed_lock = threading.Lock()
+
+
+def _login_key(email):
+    return f"{request.remote_addr}|{email}"
+
+
+def _is_locked_out(email):
+    window = current_app.config.get('LOGIN_LOCKOUT_SECONDS', 900)
+    limit = current_app.config.get('LOGIN_MAX_ATTEMPTS', 5)
+    now = time.monotonic()
+    with _failed_lock:
+        recent = [t for t in _failed_logins.get(_login_key(email), []) if now - t < window]
+        _failed_logins[_login_key(email)] = recent
+        return len(recent) >= limit
+
+
+def _register_failed_login(email):
+    with _failed_lock:
+        _failed_logins.setdefault(_login_key(email), []).append(time.monotonic())
+
+
+def _clear_failed_logins(email):
+    with _failed_lock:
+        _failed_logins.pop(_login_key(email), None)
+
 
 @auth_bp.route('/')
 def home():
@@ -25,9 +56,14 @@ def login():
     if request.method == 'POST':
         email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '').strip()
+        if _is_locked_out(email):
+            flash('Demasiados intentos fallidos. Espera unos minutos e inténtalo de nuevo.', 'danger')
+            return render_template('login.html'), 429
+
         user = User.query.filter_by(email=email).first()
-        
-        if user and user.check_password(password):
+
+        if user and user.password_hash and user.check_password(password):
+            _clear_failed_logins(email)
             login_user(user)
             display_name = user.first_name or user.username
             if user.role in ['superuser', 'admin']:
@@ -42,6 +78,7 @@ def login():
                 flash(f'Bienvenido(a) {display_name}', 'success')
                 return redirect(url_for('learning.student_catalog'))
         
+        _register_failed_login(email)
         flash('Credenciales de acceso inválidas', 'danger')
     return render_template('login.html')
 
@@ -70,8 +107,9 @@ def register():
             flash('Por favor ingresa un correo electrónico válido.', 'warning')
             return render_template('register.html', form_data=request.form)
 
-        if len(password) < 4:
-            flash('La contraseña debe tener al menos 4 caracteres.', 'warning')
+        min_len = current_app.config.get('MIN_PASSWORD_LENGTH', 8)
+        if len(password) < min_len:
+            flash(f'La contraseña debe tener al menos {min_len} caracteres.', 'warning')
             return render_template('register.html', form_data=request.form)
 
         if password_confirm and password != password_confirm:
@@ -80,6 +118,9 @@ def register():
 
         # Determinar rol (estudiante o profesor/instructor)
         role = 'instructor' if role_raw in ['instructor', 'profesor', 'teacher', 'docente'] else 'student'
+        if role == 'instructor' and not current_app.config.get('ALLOW_INSTRUCTOR_SIGNUP'):
+            # RN-09: sin auto-registro de profesores; el administrador los crea.
+            role = 'student'
 
         # Verificar unicidad de correo
         existing_user = User.query.filter_by(email=email).first()

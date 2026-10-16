@@ -173,6 +173,8 @@ def instructor_lobby(session_id):
         return redirect(url_for('auth.home'))
 
     session_obj = ExamSession.query.get_or_404(session_id)
+    if session_obj.exam.instructor_id != current_user.id and current_user.role not in ['superuser', 'admin']:
+        return 'Acceso denegado', 403
     attempts = ExamAttempt.query.filter_by(session_id=session_id).order_by(ExamAttempt.completed_at.desc()).all()
     join_url = url_for('auth.student_join_exam', _external=True)
     return render_template('instructor_lobby.html', session=session_obj, attempts=attempts, join_url=join_url)
@@ -300,6 +302,10 @@ def submit_exam(session_id):
     
     # Evitar múltiples envíos del mismo estudiante para la misma sesión
     attempt_count = ExamAttempt.query.filter_by(student_id=current_user.id, session_id=session_id).count()
+    if session_obj.status in ['finished', 'FINISHED', 'closed', 'CLOSED']:
+        # RN-12: una sala finalizada no admite envíos.
+        flash('Esta sala ya finalizó; no se reciben más respuestas.', 'warning')
+        return redirect(url_for('auth.student_join_exam'))
     if session_obj.status in ['PAUSED', 'paused']:
         flash('El examen está pausado.', 'warning')
         return redirect(url_for('exams.presentar_examen', session_id=session_id))
@@ -518,6 +524,10 @@ def submit_exam(session_id):
 @login_required
 def resultados(attempt_id):
     attempt = ExamAttempt.query.get_or_404(attempt_id)
+    is_owner = attempt.student_id == current_user.id
+    is_exam_instructor = attempt.session.exam.instructor_id == current_user.id
+    if not (is_owner or is_exam_instructor or current_user.role in ['superuser', 'admin']):
+        return 'Acceso denegado', 403
     answers = StudentAnswer.query.filter_by(attempt_id=attempt.id).all()
     return render_template('resultados.html', attempt=attempt, answers=answers)
 
@@ -525,6 +535,8 @@ def resultados(attempt_id):
 @login_required
 def close_session(session_id):
     session_obj = ExamSession.query.get_or_404(session_id)
+    if current_user.role == 'instructor' and session_obj.exam.instructor_id != current_user.id:
+        return 'Acceso denegado', 403
     if current_user.role == 'instructor':
         session_obj.status = 'finished'
         db.session.commit()
@@ -801,9 +813,12 @@ def download_attempt_results_excel(attempt_id):
 def get_session_status_json(session_id):
     session_obj = ExamSession.query.get_or_404(session_id)
 
-    # Obtener los intentos/estudiantes conectados a esta sesión
-    attempts = ExamAttempt.query.filter_by(session_id=session_id).all()
-    students = [a.student.username for a in attempts if a.student]
+    # Los estudiantes consultan el estado para saber si la sala sigue abierta; la
+    # lista de nombres de quienes enviaron solo la ve el profesor dueño (RNF-04).
+    students = []
+    if session_obj.exam.instructor_id == current_user.id or current_user.role in ['superuser', 'admin']:
+        attempts = ExamAttempt.query.filter_by(session_id=session_id).all()
+        students = [a.student.username for a in attempts if a.student]
 
     return {
         'status': session_obj.status,
@@ -1009,6 +1024,11 @@ def delete_exam_permanent(exam_id):
     exam = Exam.query.get_or_404(exam_id)
     if current_user.role != 'instructor' or exam.instructor_id != current_user.id:
         return 'Acceso denegado', 403
+    # RN-10: con intentos registrados solo se archiva, para no romper el historial.
+    has_attempts = ExamAttempt.query.join(ExamSession).filter(ExamSession.exam_id == exam.id).first()
+    if has_attempts:
+        flash('Este examen tiene intentos de estudiantes: queda archivado, no se puede borrar definitivamente.', 'warning')
+        return redirect(url_for('exams.library', tab='deleted'))
     title = exam.title
     db.session.delete(exam)
     db.session.commit()

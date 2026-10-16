@@ -1,0 +1,14 @@
+.git
+venv
+.venv
+__pycache__
+*.pyc
+.env
+*.db
+*.db-wal
+*.db-shm
+instance/
+app/static/uploads/
+tests/
+docs/
+server.log

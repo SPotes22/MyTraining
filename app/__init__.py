@@ -1,8 +1,10 @@
 # app/__init__.py
-from flask import Flask
-from sqlalchemy import inspect
-from app.config import Config
-from app.extensions import db, login_manager, socketio
+from flask import Flask, jsonify
+from sqlalchemy import inspect, text
+from werkzeug.middleware.proxy_fix import ProxyFix
+from app.config import Config, validate_config
+from flask_wtf.csrf import CSRFError
+from app.extensions import db, login_manager, socketio, csrf
 
 def _add_column_if_missing(conn, table_columns, table_name, column_name, ddl):
     if column_name not in table_columns:
@@ -74,14 +76,16 @@ def init_db():
         db.session.add(superuser)
         db.session.commit()
         print(f"Superusuario '{superuser_name}' ({superuser_email}) creado exitosamente.")
-    else:
+    elif Config.SUPERUSER_RESET_ON_BOOT:
+        # Solo en desarrollo por defecto: en pre-producción la contraseña cambiada
+        # desde la app no debe revertirse en cada reinicio del contenedor.
         superuser.role = 'superuser'
         superuser.email = superuser_email
         superuser.username = superuser_name
         superuser.set_password(superuser_pass)
         db.session.commit()
-    
-    if not User.query.filter_by(role='instructor').first():
+
+    if Config.SEED_DEMO_DATA and not User.query.filter_by(role='instructor').first():
         teacher = User(username="Profesor Principal", email="profesor@capacitacion.com", role="instructor")
         teacher.set_password("admin123")
         db.session.add(teacher)
@@ -130,12 +134,23 @@ def init_db():
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
+    validate_config(app.config)
+
+    if app.config.get('PROXY_FIX_HOPS'):
+        hops = app.config['PROXY_FIX_HOPS']
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=hops, x_proto=hops, x_host=hops)
 
     # Inicializar extensiones
     db.init_app(app)
+    csrf.init_app(app)
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
-    socketio.init_app(app)
+    # Los handlers de Socket.IO se importan ANTES de init_app: así quedan en
+    # socketio.handlers y se registran en cada servidor nuevo (tests, recargas).
+    from app.realtime import sockets  # noqa: F401
+    from app.blueprints.polls import sockets as poll_sockets  # noqa: F401
+    # Lista vacía = solo mismo origen (antes "*", que permitía conectar desde cualquier sitio).
+    socketio.init_app(app, cors_allowed_origins=app.config.get('SOCKETIO_CORS_ORIGINS') or None)
 
     with app.app_context():
         init_db()
@@ -148,8 +163,6 @@ def create_app():
     from app.blueprints.admin import admin_bp
     from app.blueprints.learning import learning_bp
     from app.blueprints.polls import polls_bp
-    from app.realtime import sockets  # noqa: F401
-    from app.blueprints.polls import sockets as poll_sockets  # noqa: F401
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
@@ -158,6 +171,39 @@ def create_app():
     app.register_blueprint(media_bp)
     app.register_blueprint(learning_bp)
     app.register_blueprint(polls_bp)
+
+    @app.after_request
+    def _security_headers(response):
+        response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+        response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+        response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+        if app.config.get('SESSION_COOKIE_SECURE'):
+            response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000')
+        return response
+
+    @app.errorhandler(CSRFError)
+    def _csrf_error(error):
+        from flask import flash, redirect, request
+        if request.accept_mimetypes.best == 'application/json' or request.is_json:
+            return jsonify(error='Token CSRF inválido o ausente. Recarga la página.'), 400
+        flash('La página caducó o el formulario no es válido. Inténtalo de nuevo.', 'warning')
+        referrer = request.referrer or ''
+        # Solo volver a una página propia (evita usar el error como redirección abierta).
+        return redirect(referrer if referrer.startswith(request.host_url) else '/'), 302
+
+    @app.errorhandler(413)
+    def _too_large(_error):
+        limit_mb = app.config['MAX_CONTENT_LENGTH'] // (1024 * 1024)
+        return jsonify(error=f'Archivo demasiado grande. Límite: {limit_mb} MB.'), 413
+
+    @app.route('/healthz')
+    def healthz():
+        # Usado por el balanceador / Cloud Run para el chequeo de disponibilidad (SRS: 99.5 %).
+        try:
+            db.session.execute(text('SELECT 1'))
+            return jsonify(status='ok', env=app.config.get('APP_ENV')), 200
+        except Exception:
+            return jsonify(status='db_unavailable'), 503
 
     return app
 

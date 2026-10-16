@@ -2,7 +2,7 @@ import pandas as pd
 from flask import render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from app.extensions import db
-from app.models import Bank, Question, QuestionOption, QuestionMatching, QuestionOrder
+from app.models import Bank, Question, QuestionOption, QuestionMatching, QuestionOrder, Exam, ExamQuestion, StudentAnswer
 from app.blueprints.questions import questions_bp
 from app.services.exam_builder import duplicate_question, save_question_payload, validate_feedback
 
@@ -40,7 +40,12 @@ def delete_bank(bank_id):
     if bank.created_by != current_user.id:
         flash('No tienes permiso para eliminar este banco.', 'danger')
         return redirect(url_for('exams.instructor_dashboard'))
-    
+
+    # RN-13: borrar el banco arrastra sus preguntas en cascada.
+    if any(question_in_use(q) for q in bank.questions):
+        flash('No se puede eliminar el banco: tiene preguntas en exámenes activos o con respuestas registradas.', 'warning')
+        return redirect(url_for('exams.instructor_dashboard'))
+
     db.session.delete(bank)
     db.session.commit()
     flash(f'Banco "{bank.name}" eliminado.', 'info')
@@ -111,11 +116,25 @@ def delete_question(question_id):
     if question.bank.created_by != current_user.id:
         flash('No tienes permiso para eliminar esta pregunta.', 'danger')
         return redirect(url_for('questions.mis_preguntas'))
-    
+
+    if question_in_use(question):
+        flash('No se puede eliminar: la pregunta está en un examen activo o tiene respuestas de estudiantes. Quítala del examen o archívalo primero.', 'warning')
+        return redirect(url_for('questions.mis_preguntas'))
+
     db.session.delete(question)
     db.session.commit()
     flash('Pregunta eliminada.', 'info')
     return redirect(url_for('questions.mis_preguntas'))
+
+def question_in_use(question):
+    """RN-13 (antes RN-04 del SRS V2): no se borra una pregunta ligada a un examen activo o a intentos ya presentados."""
+    if StudentAnswer.query.filter_by(question_id=question.id).first():
+        return True
+    return db.session.query(ExamQuestion).join(Exam).filter(
+        ExamQuestion.question_id == question.id,
+        Exam.active.is_(True),
+    ).first() is not None
+
 
 @questions_bp.route('/instructor/questions/bulk-delete', methods=['POST'])
 @login_required
@@ -130,13 +149,19 @@ def bulk_delete_questions():
     
     questions = Question.query.filter(Question.id.in_(question_ids)).all()
     count = 0
+    blocked = 0
     for q in questions:
         if q.bank and q.bank.created_by == current_user.id:
+            if question_in_use(q):
+                blocked += 1
+                continue
             db.session.delete(q)
             count += 1
-    
+
     db.session.commit()
     flash(f'Se eliminaron {count} preguntas exitosamente.', 'info')
+    if blocked:
+        flash(f'{blocked} pregunta(s) no se eliminaron porque están en un examen activo o tienen respuestas registradas (RN-13).', 'warning')
     return redirect(url_for('questions.mis_preguntas'))
 
 

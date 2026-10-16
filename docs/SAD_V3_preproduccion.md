@@ -1,0 +1,269 @@
+# Documento de Descripción de la Arquitectura de Software (SAD) — V3
+
+**Proyecto:** Plataforma de Capacitación y Evaluación En Línea (MyTraining)
+**Fecha:** 16 de octubre de 2026
+**Versión:** 3.0, pre-producción. Reemplaza al SAD V2 del 23 de julio de 2026.
+**Documentos relacionados:** `SRS_V3.1_preproduccion.md`, `AUDITORIA_PREPRODUCCION.md`
+
+---
+
+## 1. Introducción
+
+El SAD V2 planteó dos fases: MVP (SQLite, servidor de desarrollo) y Producción (PostgreSQL, Gunicorn, Nginx, Docker). Esta versión agrega una fase intermedia, **Pre-producción**, y fija qué condición dispara el paso a la siguiente. La razón es de negocio: PostgreSQL gestionado, Redis y una segunda instancia cuestan dinero cada mes, y ese gasto debe pagarlo una base de usuarios que todavía no existe.
+
+La V3 también corrige partes del V2 que describían una arquitectura que el código nunca implementó (§1.1).
+
+### 1.1 Correcciones respecto al SAD V2
+
+| SAD V2 decía | Realidad del código | V3 |
+|---|---|---|
+| Video.js en el reproductor | `<video>` nativo e `<iframe>` de YouTube/Vimeo | Se documenta lo real; Video.js queda opcional para RF-011 |
+| Sesiones cifradas con `Flask-Session` | Cookie de sesión firmada de Flask + `Flask-Login`; `Flask-Session` no está instalado | Cookie firmada con `HttpOnly`, `SameSite=Lax`, `Secure` |
+| Metadatos de video en `metadata/*.json` (ADR-004) | `Question.video_timestamp` y `Block.configuracion` (JSON) en la base | ADR-004 se marca como reemplazada (§6) |
+| Hash `pbkdf2:sha256` | Werkzeug 3.1 usa `scrypt` por defecto | `scrypt` (cumple RNF-01 del SRS V3) |
+| Sin tiempo real | Socket.IO es el núcleo de las salas en vivo | Nueva ADR-005 |
+| Tablas `question_bank`, `exam_attempts`… | `banks`, `questions`, `exam_sessions`, `session_question_snapshots`, `live_answers`, `learnings`… | §7 actualizado |
+
+---
+
+## 2. Objetivos
+
+- **Lanzar con costo fijo mínimo:** un solo contenedor y un solo archivo de base de datos.
+- **Seguridad no negociable desde el primer usuario real:** los controles de la Fase 1 del SRS V3 se aplican en pre-producción, no en producción.
+- **Migración barata:** pasar a PostgreSQL debe ser un cambio de `DATABASE_URL` más una migración de datos, sin tocar la lógica de negocio (se mantiene la promesa de ADR-003).
+- **Límites conocidos:** la capacidad de cada fase está medida (§12), así que vender salas más grandes que el tope es una decisión consciente.
+
+---
+
+## 3. Arquitectura general
+
+Sigue siendo un **monolito modular con renderizado en servidor** (Flask + Jinja2) al que se suma **Socket.IO** para las salas en vivo.
+
+| Fase | Estado | Stack | Costo de infraestructura |
+|---|---|---|---|
+| **MVP** | Terminada | Flask 3 + Jinja2 + Bootstrap 5 + Socket.IO + SQLite, servidor de desarrollo | Local |
+| **Pre-producción** | **Actual** | Lo anterior + Gunicorn (1 worker, hilos) + Docker + HTTPS por proxy inverso + SQLite en WAL sobre disco persistente + respaldo diario | Una VM pequeña + disco |
+| **Producción** | Cuando se cumpla un disparador (§12.3) | PostgreSQL gestionado + Redis (cola de Socket.IO) + N workers/instancias + Nginx/balanceador + almacenamiento de objetos para video | Base gestionada + Redis + 2 o más instancias |
+
+---
+
+## 4. Arquitectura en capas
+
+| Capa | Implementación |
+|---|---|
+| Presentación | Plantillas Jinja2 con Bootstrap 5.3 (CDN) y JavaScript vanilla. `base.html` centraliza el diseño (`soc-*`) e inyecta el token CSRF en todo POST |
+| Tiempo real | Flask-SocketIO en modo *threading* con `simple-websocket`. Las salas se coordinan en `app/realtime/` y los modos de examen en `app/modes/` |
+| Aplicación | Blueprints: `auth`, `admin`, `questions`, `exams`, `learning`, `polls`, `media`. Servicios: `exam_builder`, `exam_content`, `learning_service`, `remediation_service` |
+| Persistencia | Flask-SQLAlchemy 3.1 / SQLAlchemy 2.0. SQLite en WAL (pre-producción) y PostgreSQL (producción). Archivos subidos en `app/static/uploads/` sobre un volumen |
+
+---
+
+## 5. Componentes
+
+| Componente | Ubicación | Responsabilidad |
+|---|---|---|
+| Authentication Manager | `blueprints/auth`, `blueprints/admin` | Registro, login con bloqueo por intentos, ingreso de invitados por código, gestión de profesores |
+| Question Manager | `blueprints/questions`, `services/exam_builder.py` | Bancos, 6 tipos de pregunta, importación CSV/Excel, protección contra borrado con historial (RN-13) |
+| Exam Manager | `blueprints/exams` | Constructor, biblioteca, clases, salas, envío y calificación, reportes, exportación Excel |
+| Session Snapshot | `services/exam_content.py`, `SessionQuestionSnapshot` | Congela las preguntas al abrir una sala (RF-019 / RN-06) |
+| Realtime Manager | `realtime/manager.py`, `realtime/sockets.py`, `modes/` | Estado en memoria de cada sala, eventos de profesor y estudiantes, autorización por sesión |
+| Learning Manager | `blueprints/learning`, `services/learning_service.py` | Capacitaciones por módulos, lecciones y bloques; progreso; importación y exportación JSON |
+| Remediation | `services/remediation_service.py` | Curso de refuerzo automático para quienes reprueban |
+| Polls | `blueprints/polls` | Encuestas en vivo |
+| Media | `blueprints/media`, `/learning/api/upload` | Subida (solo instructores, tope `MAX_UPLOAD_MB`) y entrega de archivos |
+
+---
+
+## 6. Registro de decisiones arquitectónicas (ADR)
+
+**ADR-001 — Flask 3.x sobre Python 3.13.** *Vigente.* La versión se fija en el `Dockerfile` (`python:3.13-slim`) y en `requirements.txt`.
+
+**ADR-002 — Renderizado en servidor con Jinja2.** *Vigente.*
+
+**ADR-003 — SQLite para MVP y pre-producción.** *Vigente, con condiciones.*
+- Se activa `journal_mode=WAL`, `synchronous=NORMAL` y `busy_timeout=30000` en cada conexión (`app/extensions.py`).
+- Con eso, 200 envíos simultáneos no producen `database is locked`.
+- La migración se dispara por los criterios de §12.3, no por calendario.
+
+**ADR-004 — Metadatos de video en archivos JSON.** *Reemplazada.* El código guarda la marca de tiempo en `questions.video_timestamp` y la configuración de bloques en `learning_blocks.configuracion` (columna JSON). Es más simple de respaldar (un solo archivo) y migra a PostgreSQL como `JSONB` sin cambios.
+
+**ADR-005 — Socket.IO para salas en vivo, con estado en memoria.** *Nueva.*
+- *Decisión:* Flask-SocketIO, con el estado de cada sala (conectados, respuestas, pregunta actual) en un `SessionManager` en memoria. Las respuestas parciales se persisten además en `live_answers`.
+- *Consecuencia:* **solo puede correr un proceso.** Con dos workers, cada uno vería salas distintas.
+- *Salida prevista:* Redis como `message_queue` de Flask-SocketIO y el estado de sala en Redis o en la base (Fase Producción).
+
+**ADR-006 — Un worker de Gunicorn con hilos.** *Nueva.*
+- *Decisión:* `gunicorn.conf.py` fija `workers = 1`, `worker_class = gthread`, 64 hilos y `timeout = 0` (los websockets son conexiones largas).
+- *Justificación:* ADR-005 y el escritor único de SQLite.
+- *Costo medido:* unos 25 envíos de examen por segundo (§12.1).
+
+**ADR-007 — Configuración por entorno con arranque seguro.** *Nueva.* `APP_ENV` (`development`, `preproduction` o `production`) define los valores por defecto. Fuera de `development`:
+- la app no arranca si `SECRET_KEY` o `SUPERUSER_PASSWORD` tienen los valores de ejemplo, o si `SECRET_KEY` tiene menos de 32 caracteres;
+- no se siembran datos demo;
+- no se reescribe la clave del superusuario;
+- no se permite el auto-registro de profesores, salvo `ALLOW_INSTRUCTOR_SIGNUP=true`.
+
+**ADR-008 — Identidad de socket desde la sesión.** *Nueva.* Los eventos de Socket.IO ignoran cualquier `student_id` o `instructor_id` que envíe el navegador y usan `current_user`. Las acciones de profesor (unirse como profesor, iniciar, pausar, reanudar, estadísticas) verifican la propiedad del examen.
+
+**ADR-009 — CSRF global sin tocar cada plantilla.** *Nueva.*
+- `Flask-WTF CSRFProtect` valida todo POST.
+- `base.html` publica el token en `<meta name="csrf-token">` y lo añade automáticamente a formularios (evento `submit` y `HTMLFormElement.prototype.submit`) y a `fetch` del mismo origen.
+- El token no caduca por tiempo (`WTF_CSRF_TIME_LIMIT=None`) para no romper exámenes largos.
+- El tráfico de Socket.IO no pasa por este control: lo protegen la cookie `SameSite=Lax` y la política de mismo origen de Socket.IO.
+
+**ADR-010 — Respaldo en caliente de SQLite.** *Nueva.* `scripts/backup_sqlite.py` usa la API `backup` de sqlite3 (consistente con la app corriendo), verifica `integrity_check` y aplica 30 días de retención. Se programa con cron en el host.
+
+---
+
+## 7. Modelo de datos (real)
+
+| Tabla | Propósito | Claves relevantes |
+|---|---|---|
+| `users` | Superusuario, instructores, estudiantes registrados e invitados | `email` único (nulo para invitados); `role` |
+| `banks` | Bancos de preguntas | FK `created_by` → `users`; `name` único |
+| `questions` | Preguntas (6 tipos + video) | FK `bank_id`; `default_points`, `video_timestamp`, `feedback_text` |
+| `question_options` / `question_matching` / `question_orders` | Opciones, pares y orden correcto | FK `question_id` |
+| `exams` | Exámenes | FK `instructor_id`; `active` (archivado), `status`, `max_attempts`, `passing_score`, `exam_mode` |
+| `exam_questions` | Pregunta en examen, con orden y puntaje propio | PK (`exam_id`, `question_id`) |
+| `exam_classes`, `exam_class_exams`, `exam_groups` | Clases y carpetas | |
+| `exam_sessions` | Salas en vivo | `session_code` único de 6 caracteres; `status` |
+| `session_question_snapshots` | Copia congelada de cada pregunta por sala | FK `session_id`; opciones en JSON |
+| `live_answers` | Última respuesta por estudiante y pregunta durante la sala | Único (`session_id`, `student_id`, `question_id`) |
+| `exam_attempts` | Intento enviado y nota | FK `student_id`, `session_id` |
+| `student_answers` | Respuesta calificada con texto congelado | FK `attempt_id`, `question_id`, `question_snapshot_id` |
+| `learnings`, `learning_modules`, `learning_lessons`, `learning_blocks` | Capacitaciones | Bloques con `configuracion` JSON |
+| `learning_progress`, `learning_block_answers` | Progreso y respuestas en capacitaciones | |
+| `polls`, `poll_votes` | Encuestas | Único (`poll_id`, `student_id`) |
+
+**Esquema:** hoy lo ajusta `ensure_schema()` con `ALTER TABLE ADD COLUMN`. Antes de PostgreSQL debe reemplazarse por Flask-Migrate/Alembic (RNF-13).
+
+---
+
+## 8. Diagrama de componentes
+
+```
+ Navegador (Jinja2 + Bootstrap + JS, token CSRF)        ── HTTPS / WSS ──┐
+                                                                         ▼
+                                    Proxy inverso con TLS (Nginx / Caddy / LB de GCP)
+                                                                         │  X-Forwarded-* (ProxyFix)
+                                                                         ▼
+                              Gunicorn · 1 worker gthread · 64 hilos · wsgi:app
+                ┌───────────────────────────────┴───────────────────────────────┐
+           Flask (HTTP)                                                Flask-SocketIO
+  auth · admin · questions · exams ·                         realtime/sockets · modes/
+  learning · polls · media · /healthz                        SessionManager (memoria)
+                └───────────────────────────────┬───────────────────────────────┘
+                                                 ▼
+                                   SQLAlchemy 2.0 ──► SQLite (WAL) en /data   ──► backup_sqlite.py (cron)
+                                                 └─► app/static/uploads (volumen)
+```
+
+---
+
+## 9. Tecnologías (versiones fijadas en `requirements.txt`)
+
+| Área | Tecnología |
+|---|---|
+| Lenguaje | Python 3.13 |
+| Web | Flask 3.0.2, Werkzeug 3.1.8, Jinja2 3.1.6 |
+| Autenticación | Flask-Login 0.6.3; Flask-WTF 1.2.2 (CSRF) |
+| Tiempo real | Flask-SocketIO 5.3.6, python-socketio 5.11.1, simple-websocket 1.1.0 |
+| Datos | Flask-SQLAlchemy 3.1.1, SQLAlchemy 2.0.51; pandas + openpyxl (Excel) |
+| Servidor | Gunicorn 23.0.0 |
+| Frontend | Bootstrap 5.3 e íconos por CDN, Socket.IO cliente 4.5.4 por CDN |
+
+---
+
+## 10. Seguridad
+
+| Control | Implementación |
+|---|---|
+| Contraseñas | Werkzeug `scrypt`; mínimo 8 caracteres (`MIN_PASSWORD_LENGTH`) |
+| Fuerza bruta | 5 fallos en 15 minutos por IP+correo bloquean el login (429). En memoria, válido con 1 worker; con varios workers debe ir a Redis |
+| Sesión | Cookie firmada `HttpOnly`, `SameSite=Lax`, `Secure` fuera de desarrollo; HSTS |
+| CSRF | `CSRFProtect` global (ADR-009) |
+| Autorización | Rol y propiedad en rutas HTTP y eventos de socket (ADR-008). Resultados visibles solo para el estudiante, su profesor o un admin |
+| Roles | El rol instructor lo asigna un administrador (RN-09); auto-registro solo con `ALLOW_INSTRUCTOR_SIGNUP` |
+| Secretos | Solo por entorno; arranque bloqueado con valores de ejemplo (ADR-007) |
+| Archivos | Extensiones en lista blanca, nombre aleatorio, `MAX_CONTENT_LENGTH`, subida solo para instructores; sin exportaciones en carpetas públicas |
+| Cabeceras | `X-Content-Type-Options`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy` |
+| Inyección | Consultas parametrizadas por SQLAlchemy; autoescape de Jinja2 |
+| Depuración | `debug` solo con `APP_ENV=development` y en `127.0.0.1` |
+
+**Pendiente:** política de contenido (CSP), registro de auditoría (RF-030), recuperación de contraseña (RF-028) y los requisitos legales RL-01 a RL-12 del SRS.
+
+---
+
+## 11. Despliegue e infraestructura
+
+### 11.1 Pre-producción (actual)
+
+- **Imagen:** `Dockerfile` (`python:3.13-slim`, usuario sin privilegios, `HEALTHCHECK` contra `/healthz`, `CMD gunicorn -c gunicorn.conf.py wsgi:app`).
+- **Dónde en GCP:** una **VM de Compute Engine** pequeña con Docker y un **disco persistente** montado en `/data` (base) y en `app/static/uploads` (archivos).
+  - **No usar Cloud Run** en esta fase: su sistema de archivos es efímero y puede levantar varias instancias, lo que rompe SQLite (archivo local) y ADR-005 (estado en memoria).
+- **TLS:** proxy inverso en la misma VM (Nginx o Caddy con certificado automático), o el balanceador HTTPS de GCP. Activar `PROXY_FIX_HOPS=1`.
+  - El proxy **debe** reenviar `X-Forwarded-Proto` y `Host`, y las cabeceras `Upgrade`/`Connection` para WebSocket. Sin `X-Forwarded-Proto`, Socket.IO rechaza el origen `https://` por la verificación de mismo origen.
+  - Con `PROXY_FIX_HOPS=1` la app confía en `X-Forwarded-For`. No expongas el puerto de Gunicorn directamente a Internet: alguien podría falsificar su IP y saltarse el bloqueo de login.
+- **Variables obligatorias:** `APP_ENV=preproduction`, `SECRET_KEY` (32 o más caracteres), `SUPERUSER_PASSWORD`, `DATABASE_URL=sqlite:////data/mytraining.db`. Ver `env.example`.
+- **Respaldo:** cron diario con `scripts/backup_sqlite.py /data/mytraining.db /backups --keep-days 30`, más una copia periódica de `/backups` a un bucket de Cloud Storage. También conviene un snapshot programado del disco persistente.
+- **Monitoreo:** chequeo de disponibilidad de GCP contra `https://<dominio>/healthz`.
+
+### 11.2 Producción (al dispararse §12.3)
+
+1. Migrar el esquema a Alembic y los datos de SQLite a Cloud SQL (PostgreSQL). Cambiar `DATABASE_URL`.
+2. Agregar Redis (Memorystore) como `message_queue` de Flask-SocketIO y mover el estado de sala y el bloqueo de login a Redis.
+3. Subir a 2 o más instancias detrás del balanceador, con afinidad de sesión para Socket.IO.
+4. Mover `uploads` a Cloud Storage y servir videos desde allí o desde un CDN.
+
+---
+
+## 12. Escalabilidad y límites
+
+### 12.1 Capacidad medida en pre-producción
+
+Ráfaga de envíos simultáneos de un examen de 20 preguntas; detalle en `AUDITORIA_PREPRODUCCION.md` §4.
+
+| Simultáneos | p95 | Errores |
+|---:|---:|---:|
+| 30 | 1,4 s | 0 |
+| 50 | 2,2 s | 0 |
+| 100 | 4,1 s | 0 |
+| 200 | 7,9 s | 0 |
+
+**Tope operativo por instancia: ~45 envíos simultáneos** para cumplir CA-01 (≤ 2 s). Con envíos escalonados, una sala de 100 (RB-02) funciona.
+
+### 12.2 Dónde está el cuello de botella
+
+El límite lo pone el proceso único (GIL + serialización), no SQLite. **Cambiar solo a PostgreSQL no sube el tope**: hay que hacer a la vez PostgreSQL + Redis + varios workers. Antes de eso, optimizar `submit_exam` (consultas por opción, recreación de instantáneas) es la mejora más barata.
+
+### 12.3 Disparadores para pasar a Producción
+
+Cualquiera de estos:
+
+1. Un cliente necesita salas de más de ~45 envíos simultáneos con p95 ≤ 2 s.
+2. Un contrato exige un SLA de 99,5 % o más (necesita 2 instancias).
+3. Aparece `database is locked` en los logs, o el tamaño de la base hace lento el respaldo diario.
+4. El ingreso recurrente cubre al menos 3 veces el costo mensual de Cloud SQL + Redis + la segunda instancia.
+
+---
+
+## 13. Riesgos y mitigaciones
+
+| Riesgo | Mitigación en pre-producción |
+|---|---|
+| Concurrencia en SQLite | WAL + `busy_timeout`; tope operativo documentado; disparadores de migración |
+| Caída del único nodo | Reinicio automático del contenedor, `/healthz` monitoreado, respaldo diario. Disponibilidad esperada de ~99 %, no 99,5 % |
+| Reinicio durante una sala | Las respuestas parciales están en `live_answers` y se restauran al reconectar. El estado de quién está conectado se pierde y se reconstruye al reconectar |
+| CSV/Excel mal formado | **Abierto** (RF-014 / RN-03 del SRS V3) |
+| Disco lleno por subidas | Subida solo para instructores, tope por archivo; alerta de disco en la VM |
+| Datos personales sin base legal | **Abierto:** política de tratamiento y autorización (RL-01, RL-02) antes de abrir a usuarios reales |
+| Usuarios invitados acumulados | **Abierto:** anonimizar a los 90 días (RL-10) |
+
+---
+
+## 14. Futuras mejoras
+
+- Almacenamiento en la nube (Cloud Storage) para videos.
+- Generación de cuestionarios con IA.
+- Reproductor con pausa por marca de tiempo (RF-011). Video.js o las APIs de YouTube y Vimeo son candidatos.
+- Registro de auditoría y logs estructurados (RF-030, RNF-17).

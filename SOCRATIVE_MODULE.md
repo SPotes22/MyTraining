@@ -59,6 +59,8 @@
 ## Validaciones y permisos
 
 - El backend valida propiedad del profesor antes de editar preguntas, exámenes, clases, sesiones y resultados.
+- Los eventos Socket.IO toman la identidad de la sesión (`current_user`), nunca del payload; pausar, reanudar, iniciar y unirse como profesor exigen ser el dueño del examen.
+- Todo POST exige token CSRF (inyectado por `base.html`).
 - La retroalimentación tiene límite estricto de 3000 caracteres en frontend (`maxlength`) y backend.
 - Los puntos deben ser numéricos y mayores que cero.
 - La selección aleatoria rechaza cantidades mayores a las preguntas disponibles sin duplicados.
@@ -68,4 +70,4 @@
 
 ## Nota sobre `run.py`
 
-Se aplicó un cambio mínimo para permitir que Flask-SocketIO arranque con Werkzeug en este entorno de desarrollo moderno. No cambia la arquitectura ni el despliegue recomendado; en producción debe usarse un servidor WSGI/ASGI apropiado.
+`run.py` es solo para desarrollo: activa el depurador de Werkzeug únicamente con `APP_ENV=development` y escuchando en `127.0.0.1`. Pre-producción usa `gunicorn -c gunicorn.conf.py wsgi:app` con un solo worker (el estado de las salas vive en memoria). Ver `docs/SAD_V3_preproduccion.md`.

@@ -1,6 +1,7 @@
 import os
 import json
 import uuid
+from io import BytesIO
 from werkzeug.utils import secure_filename
 from flask import render_template, request, redirect, url_for, flash, jsonify, send_file, current_app , Blueprint
 from flask_login import login_required, current_user
@@ -11,7 +12,7 @@ from app.services import learning_service
 from app.services.remediation_service import RemediationService
 
 ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp', 'gif', 'mp4', 'webm', 'pdf', 'mp3'}
-MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB
+# El tope de tamaño se aplica globalmente con Config.MAX_CONTENT_LENGTH (MAX_UPLOAD_MB).
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -139,15 +140,11 @@ def export_learning(learning_id):
 
     data = learning_service.export_learning_json(learning_id)
     filename = f"learning_{learning.id}_{secure_filename(learning.nombre)}.json"
-    
-    upload_dir = os.path.join(current_app.root_path, 'static', 'uploads', 'exports')
-    os.makedirs(upload_dir, exist_ok=True)
-    filepath = os.path.join(upload_dir, filename)
-    
-    with open(filepath, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
 
-    return send_file(filepath, as_attachment=True, download_name=filename)
+    # Se genera en memoria: antes se escribía en static/uploads/exports, una
+    # carpeta pública donde cualquiera podía descargar el curso adivinando el nombre.
+    payload = BytesIO(json.dumps(data, ensure_ascii=False, indent=2).encode('utf-8'))
+    return send_file(payload, as_attachment=True, download_name=filename, mimetype='application/json')
 
 
 @learning_bp.route('/instructor/import', methods=['POST'])
@@ -414,6 +411,10 @@ def api_reorder_blocks():
 @learning_bp.route('/api/upload', methods=['POST'])
 @login_required
 def api_upload_media():
+    # Solo quien crea contenido sube archivos; los estudiantes (incluidos los
+    # anónimos de /student/join) no deben poder llenar el disco.
+    if current_user.role not in ['instructor', 'admin', 'superuser']:
+        return jsonify({'error': 'Acceso no autorizado'}), 403
     if 'file' not in request.files:
         return jsonify({'error': 'No file uploaded'}), 400
 

@@ -4,10 +4,10 @@
 
 ![banner](docs/images/banner.svg)
 
-![python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
+![python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
 ![flask](https://img.shields.io/badge/flask-3.0-000000?logo=flask&logoColor=white)
 ![socketio](https://img.shields.io/badge/realtime-Socket.IO-2ab6d1?logo=socketdotio&logoColor=white)
-![status](https://img.shields.io/badge/estado-en%20construcci%C3%B3n%20activa-f4823a)
+![status](https://img.shields.io/badge/estado-pre--producci%C3%B3n-f4823a)
 ![vibes](https://img.shields.io/badge/vibes-asarosas-4caf50)
 
 ---
@@ -55,13 +55,44 @@ cp env.example .env
 python run.py
 ```
 
-Y ya, entras a `http://127.0.0.1:5000`. La primera vez créate una cuenta de tipo **Profesor / Instructor** desde "Crear Cuenta".
+Y ya, entras a `http://127.0.0.1:5000`. En desarrollo (`APP_ENV=development`, el valor por defecto) se siembra un profesor demo y puedes crearte una cuenta de tipo **Profesor / Instructor** desde "Crear Cuenta".
 
 ### Correr las pruebas
 
 ```bash
-pytest
+pytest          # 33 tests
 ```
+
+## 🚀 Pre-producción
+
+Un solo contenedor, Gunicorn con **1 worker** (las salas en vivo viven en memoria) y SQLite en modo WAL sobre un disco persistente. PostgreSQL llega cuando la base de usuarios pague el cambio; los disparadores están en el SAD.
+
+```bash
+docker build -t mytraining .
+docker run -d -p 8080:8080 \
+  -e SECRET_KEY="$(python -c 'import secrets;print(secrets.token_hex(32))')" \
+  -e SUPERUSER_EMAIL=tu@correo.com -e SUPERUSER_PASSWORD='una-clave-larga' \
+  -v mytraining-data:/data -v mytraining-uploads:/srv/app/app/static/uploads \
+  mytraining
+curl localhost:8080/healthz
+```
+
+- Fuera de `development` **la app no arranca** con la `SECRET_KEY` o la clave de superusuario de ejemplo.
+- Pon delante un proxy con HTTPS (Nginx, Caddy o el balanceador de GCP); las cookies son `Secure`.
+- Los profesores los crea el superusuario. Para permitir que se registren solos: `ALLOW_INSTRUCTOR_SIGNUP=true`.
+- Respaldo diario: `python scripts/backup_sqlite.py /data/mytraining.db /backups --keep-days 30`.
+- Todas las variables están en [`env.example`](env.example).
+
+**Límite conocido:** ~45 estudiantes enviando el examen en el mismo segundo por instancia (p95 ≤ 2 s). Con envíos escalonados, una sala de 100 va bien.
+
+## 📚 Documentación
+
+| Documento | Qué tiene |
+|---|---|
+| [`docs/AUDITORIA_PREPRODUCCION.md`](docs/AUDITORIA_PREPRODUCCION.md) | Hallazgos corregidos, prueba de carga, límites y cuándo pasar a PostgreSQL |
+| [`docs/SAD_V3_preproduccion.md`](docs/SAD_V3_preproduccion.md) | Arquitectura real, ADRs y despliegue por fases |
+| [`docs/SRS_V3.1_preproduccion.md`](docs/SRS_V3.1_preproduccion.md) | Estado de cada requisito y metas por fase |
+| [`SOCRATIVE_MODULE.md`](SOCRATIVE_MODULE.md) | Rutas y modelos del módulo de exámenes |
 
 ## 🎨 Sistema de diseño
 
@@ -83,6 +114,7 @@ Todo el rediseño vive en un puñado de clases nuevas dentro de [`app/templates/
 - Este repo **no comparte historial ni remoto** con `modular_exams` — se sembró como copia independiente a propósito.
 - El diseño se inspira en capturas reales que el cliente compartió de su propia cuenta de Socrative, usadas solo como referencia visual — no se reutiliza marca, logo ni código de Socrative/Showbie.
 - Sigue en construcción: biblioteca, clases y salas heredan la paleta nueva pero aún no tienen el mismo rediseño de layout que el constructor y los reportes.
+- Antes de abrir a usuarios reales falta lo legal (política de tratamiento y autorización, Ley 1581) y el temporizador del examen. Detalle en el SRS V3.1.
 
 ---
 

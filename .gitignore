@@ -14,3 +14,9 @@ venv/
 instance/
 server.log
 
+
+# Contenido subido por usuarios / datos de ejecución: nunca al repositorio
+app/static/uploads/
+instance/
+*.db-wal
+*.db-shm
