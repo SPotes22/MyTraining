@@ -90,12 +90,20 @@ El repositorio revisa secretos en dos puntos, ambos con ggshield 1.56.0 y la mis
 **Puesta en marcha (una vez por clon):**
 
 ```bash
-pip install -r requirements-dev.txt
+git checkout main && git pull         # los archivos deben existir en tu rama
+python -m venv venv && source venv/bin/activate   # Windows Git Bash: source venv/Scripts/activate
+pip install -r requirements-dev.txt   # instala app, pytest, pre-commit y ggshield
 pre-commit install                    # instala los hooks pre-commit y pre-push
 ggshield auth login                   # o: export GITGUARDIAN_API_KEY=<CLAVE>
 ```
 
-ggshield lo instala `pre-commit` en su propio entorno la primera vez. **Sin clave de API el hook falla y bloquea el commit**: es intencional.
+**Sin clave de API el hook falla y bloquea el commit**: es intencional.
+
+**Si sale `pre-commit: command not found` o `ggshield: command not found`:**
+
+- El entorno virtual no está activo: vuelve a ejecutar `source venv/bin/activate` (en Windows Git Bash, `source venv/Scripts/activate`); el prompt debe empezar por `(venv)`.
+- `requirements-dev.txt` no existe en tu rama: revisa con `ls requirements-dev.txt` y haz `git pull`.
+- Instalaste sin entorno virtual: pip dejó los programas en `~/.local/bin`, que puede no estar en el `PATH`. Úsalos como módulo: `python -m pre_commit install` y `python -m ggshield auth login`.
 
 **Si el escaneo detecta algo:**
 

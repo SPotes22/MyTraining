@@ -2,3 +2,6 @@
 -r requirements.txt
 pytest==9.1.1
 pre-commit==4.7.0
+# CLI de GitGuardian para `ggshield auth login` y escaneos manuales; el hook de
+# pre-commit usa su propia copia aislada de la misma versión.
+ggshield==1.56.0

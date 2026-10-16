@@ -50,7 +50,7 @@ Puntos de progreso clicables arriba de cada pregunta â€” de un vistazo sabes quÃ
 ```bash
 python -m venv venv
 ./venv/Scripts/activate        # en Windows (Git Bash: source venv/Scripts/activate)
-pip install -r requirements-dev.txt
+pip install -r requirements-dev.txt   # incluye pre-commit y ggshield
 pre-commit install             # escaneo de secretos (GitGuardian) antes de cada commit y push
 cp env.example .env
 python run.py
