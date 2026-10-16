@@ -7,7 +7,7 @@ exit_zero: false
 
 secret:
   # Solo se excluye lo que nunca se versiona. NO excluyas docs/ ni tests/:
-  # el incidente del 16-oct-2026 vino precisamente de la documentación.
+  # los incidentes del 16-oct-2026 vinieron de app/__init__.py y de un test.
   ignored_paths:
     - 'venv/**'
     - '.venv/**'

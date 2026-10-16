@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from support import TEST_PASSWORD  # noqa: E402
 from app.config import Config
 from app import create_app
 from app.extensions import db
@@ -27,9 +28,9 @@ def app_ctx(tmp_path):
 def _seed_failing_session(app):
     with app.app_context():
         teacher = User(username='Profe', email='profe@example.com', role='instructor')
-        teacher.set_password('secret')
+        teacher.set_password(TEST_PASSWORD)
         student = User(username='Alumno', email='alumno@example.com', role='student')
-        student.set_password('secret')
+        student.set_password(TEST_PASSWORD)
         db.session.add_all([teacher, student])
         db.session.commit()
 
@@ -123,9 +124,9 @@ def _seed_pending_session(app, auto_remediation):
     al finalizarla vía las rutas HTTP reales)."""
     with app.app_context():
         teacher = User(username='Profe2', email='profe2@example.com', role='instructor')
-        teacher.set_password('secret')
+        teacher.set_password(TEST_PASSWORD)
         student = User(username='Alumno2', email='alumno2@example.com', role='student')
-        student.set_password('secret')
+        student.set_password(TEST_PASSWORD)
         db.session.add_all([teacher, student])
         db.session.commit()
 
@@ -175,7 +176,7 @@ def _seed_pending_session(app, auto_remediation):
         return session.id, 'profe2@example.com'
 
 
-def _login(client, email, password='secret'):
+def _login(client, email, password=TEST_PASSWORD):
     return client.post('/login', data={'email': email, 'password': password}, follow_redirects=True)
 
 
@@ -242,7 +243,7 @@ def test_exam_reports_lists_session_finished_with_uppercase_status(app_ctx):
 def test_build_remediation_course_no_failing_students_returns_none(app_ctx):
     with app_ctx.app_context():
         teacher = User(username='Profe2', email='profe2@example.com', role='instructor')
-        teacher.set_password('secret')
+        teacher.set_password(TEST_PASSWORD)
         db.session.add(teacher)
         db.session.commit()
 

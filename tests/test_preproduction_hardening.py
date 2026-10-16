@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from support import OTHER_PASSWORD, TEST_PASSWORD  # noqa: E402
 from app.config import Config, validate_config
 from app import create_app
 from app.extensions import db, socketio
@@ -25,7 +26,7 @@ def app_ctx(tmp_path):
         alumno = User(username='Alumno', email='alumno@example.com', role='student')
         intruso = User(username='Intruso', email='intruso@example.com', role='student')
         for u in (teacher, other, alumno, intruso):
-            u.set_password('secret123')
+            u.set_password(TEST_PASSWORD)
         db.session.add_all([teacher, other, alumno, intruso])
         db.session.commit()
 
@@ -54,7 +55,7 @@ def app_ctx(tmp_path):
     auth_routes._failed_logins.clear()
 
 
-def login(client, email, password='secret123'):
+def login(client, email, password=TEST_PASSWORD):
     return client.post('/login', data={'email': email, 'password': password})
 
 
@@ -129,7 +130,7 @@ def test_validate_config_requires_own_secrets(monkeypatch):
     import hashlib
     from app import config as config_module
     good = {'APP_ENV': 'preproduction', 'SECRET_KEY_FROM_ENV': True, 'SECRET_KEY': 'x' * 40,
-            'SUPERUSER_PASSWORD': 'Otra-Clave-Segura', 'MIN_PASSWORD_LENGTH': 8}
+            'SUPERUSER_PASSWORD': TEST_PASSWORD, 'MIN_PASSWORD_LENGTH': 8}
     validate_config(good)
 
     # Secretos ausentes, generados al vuelo o demasiado cortos: no arranca.
@@ -139,7 +140,7 @@ def test_validate_config_requires_own_secrets(monkeypatch):
             validate_config({**good, **bad})
 
     # Un valor que ya se publicó (su hash está en la lista) tampoco se acepta.
-    leaked = 'valor-publicado-en-el-historial'
+    leaked = OTHER_PASSWORD
     monkeypatch.setattr(config_module, 'LEAKED_SECRET_SHA256',
                         frozenset({hashlib.sha256(leaked.encode()).hexdigest()}))
     with pytest.raises(RuntimeError):
@@ -197,10 +198,10 @@ def test_csrf_blocks_post_without_token(app_ctx):
     page = c.get('/login').get_data(as_text=True)
     token = re.search(r'name="csrf-token" content="([^"]+)"', page).group(1)
 
-    c.post('/login', data={'email': 'profe@example.com', 'password': 'secret123'})
+    c.post('/login', data={'email': 'profe@example.com', 'password': TEST_PASSWORD})
     assert c.get('/instructor/exams').status_code == 302  # sin token: sigue sin sesión
 
-    res = c.post('/login', data={'email': 'profe@example.com', 'password': 'secret123', 'csrf_token': token})
+    res = c.post('/login', data={'email': 'profe@example.com', 'password': TEST_PASSWORD, 'csrf_token': token})
     assert res.status_code == 302
     assert c.get('/instructor/exams').status_code == 200
     # Con sesión iniciada, un POST sin token sigue rechazado; con cabecera X-CSRFToken (fetch) pasa.
@@ -219,7 +220,7 @@ def test_instructor_self_signup_disabled_outside_development(app_ctx):
     c = app.test_client()
     assert b'value="instructor"' not in c.get('/register').data
     c.post('/register', data={'first_name': 'P', 'last_name': 'Q', 'email': 'nuevo@example.com',
-                              'password': 'password123', 'password_confirm': 'password123', 'role': 'instructor'})
+                              'password': TEST_PASSWORD, 'password_confirm': TEST_PASSWORD, 'role': 'instructor'})
     with app.app_context():
         assert User.query.filter_by(email='nuevo@example.com').first().role == 'student'
 
@@ -262,7 +263,7 @@ def test_instructor_with_content_cannot_be_deleted(app_ctx):
     app, ids = app_ctx
     with app.app_context():
         admin = User(username='Admin', email='root@example.com', role='superuser')
-        admin.set_password('secret123')
+        admin.set_password(TEST_PASSWORD)
         db.session.add(admin)
         db.session.commit()
     c = app.test_client()

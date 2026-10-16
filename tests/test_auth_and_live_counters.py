@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from support import OTHER_PASSWORD, TEST_PASSWORD  # noqa: E402
 from app.config import Config
 from app import create_app
 from app.extensions import db
@@ -27,13 +28,13 @@ def app_ctx(tmp_path):
             institution='Universidad Nacional',
             role='instructor'
         )
-        teacher.set_password('secret123')
+        teacher.set_password(TEST_PASSWORD)
         db.session.add(teacher)
         db.session.commit()
         yield app, teacher
 
 
-def login(client, email, password='secret123'):
+def login(client, email, password=TEST_PASSWORD):
     return client.post('/login', data={'email': email, 'password': password}, follow_redirects=True)
 
 
@@ -51,8 +52,8 @@ def test_register_student_success(app_ctx):
         'first_name': 'Carlos',
         'last_name': 'Gomez',
         'email': 'carlos.gomez@test.com',
-        'password': 'password123',
-        'password_confirm': 'password123',
+        'password': TEST_PASSWORD,
+        'password_confirm': TEST_PASSWORD,
         'phone': '+57 310 999 8888',
         'institution': 'Instituto Técnico Central',
         'role': 'student'
@@ -69,7 +70,7 @@ def test_register_student_success(app_ctx):
         assert user.phone == '+57 310 999 8888'
         assert user.institution == 'Instituto Técnico Central'
         assert user.role == 'student'
-        assert user.check_password('password123')
+        assert user.check_password(TEST_PASSWORD)
         assert Bank.query.filter_by(created_by=user.id).count() == 0
 
 
@@ -81,8 +82,8 @@ def test_register_instructor_success(app_ctx):
         'first_name': 'Maria',
         'last_name': 'Rodriguez',
         'email': 'maria.profesora@test.com',
-        'password': 'password123',
-        'password_confirm': 'password123',
+        'password': TEST_PASSWORD,
+        'password_confirm': TEST_PASSWORD,
         'phone': '3001234567',
         'institution': 'Colegio Mayor',
         'role': 'instructor'
@@ -98,7 +99,7 @@ def test_register_instructor_success(app_ctx):
         assert user.phone == '3001234567'
         assert user.institution == 'Colegio Mayor'
         assert user.role == 'instructor'
-        assert user.check_password('password123')
+        assert user.check_password(TEST_PASSWORD)
 
         default_banks = Bank.query.filter_by(created_by=user.id).all()
         assert len(default_banks) == 1
@@ -115,8 +116,8 @@ def test_register_two_instructors_each_get_their_own_default_bank(app_ctx):
             'first_name': f'Prof{idx}',
             'last_name': 'Test',
             'email': email,
-            'password': 'password123',
-            'password_confirm': 'password123',
+            'password': TEST_PASSWORD,
+            'password_confirm': TEST_PASSWORD,
             'role': 'instructor'
         }
         res = client.post('/register', data=payload, follow_redirects=True)
@@ -140,8 +141,8 @@ def test_register_validation_duplicate_email_and_password_mismatch(app_ctx):
         'first_name': 'Otro',
         'last_name': 'Profesor',
         'email': 'teacher@example.com', # already exists
-        'password': 'password123',
-        'password_confirm': 'password123',
+        'password': TEST_PASSWORD,
+        'password_confirm': TEST_PASSWORD,
         'role': 'instructor'
     }
     res_dup = client.post('/register', data=payload_dup, follow_redirects=True)
@@ -153,8 +154,8 @@ def test_register_validation_duplicate_email_and_password_mismatch(app_ctx):
         'first_name': 'Ana',
         'last_name': 'Lopez',
         'email': 'ana.lopez@test.com',
-        'password': 'password123',
-        'password_confirm': 'different_pwd',
+        'password': TEST_PASSWORD,
+        'password_confirm': OTHER_PASSWORD,
         'role': 'student'
     }
     res_mismatch = client.post('/register', data=payload_mismatch, follow_redirects=True)
@@ -187,7 +188,7 @@ def test_active_sessions_and_live_student_counter(app_ctx):
         session_manager.add_student('ALG202', 103, 'Alumno 3', 'sid_3')
 
     # Login as teacher
-    login(client, 'teacher@example.com', 'secret123')
+    login(client, 'teacher@example.com', TEST_PASSWORD)
 
     # Query active sessions summary
     res = client.get('/instructor/active-sessions-summary')

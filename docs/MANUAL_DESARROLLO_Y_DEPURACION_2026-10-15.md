@@ -37,7 +37,7 @@
 | I-9 | **No borres en cascada datos con historial**: preguntas o bancos con respuestas, exámenes con intentos, profesores con contenido | RN-10 y RN-13, y SQLite reutiliza ids (§8) | `questions/routes.py`, `exams/routes.py`, `admin/routes.py` |
 | I-10 | **No versiones datos de usuario**: `app/static/uploads/`, `*.db`, `.env` | Fuga de datos | `.gitignore` |
 | I-11 | **Nada de secretos por defecto fuera de desarrollo.** Si agregas un secreto, exígelo en `validate_config`; si un valor llegó a publicarse, agrega su SHA-256 a `LEAKED_SECRET_SHA256` | `validate_config` bloquea el arranque inseguro | `app/config.py` |
-| I-13 | **Ningún secreto literal en el repositorio**: ni contraseñas de ejemplo en código, tests, `env.example` o documentación. Usa marcadores (`<CLAVE>`), valores generados (`secrets.token_urlsafe`) o hashes, como `LEAKED_SECRET_SHA256` | GitGuardian marcó un par correo/contraseña de ejemplo (incidente del 16 oct 2026) | Todo el repo |
+| I-13 | **Ningún secreto literal en el repositorio**: ni contraseñas de ejemplo en código, tests, `env.example` o documentación. Usa marcadores (`<CLAVE>`), valores generados (`secrets.token_urlsafe`) o hashes, como `LEAKED_SECRET_SHA256` | GitGuardian marcó usuario + contraseña fijos en `app/__init__.py` y en un test (incidentes del 16 oct 2026). En tests usa `TEST_PASSWORD` de `tests/support.py` | Todo el repo |
 | I-12 | **Código portable a PostgreSQL**: nada de SQL específico de SQLite fuera de `extensions.py` y `ensure_schema`; respeta las llaves foráneas aunque SQLite no las aplique | La migración prevista debe ser un cambio de `DATABASE_URL` | Modelos y servicios |
 
 ---

@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from support import TEST_PASSWORD  # noqa: E402
 from app.config import Config
 from app import create_app
 from app.extensions import db
@@ -19,17 +20,17 @@ def app_ctx(tmp_path):
         db.drop_all()
         db.create_all()
         teacher = User(username='Teacher', email='teacher@example.com', role='instructor')
-        teacher.set_password('secret')
+        teacher.set_password(TEST_PASSWORD)
         other = User(username='Other', email='other@example.com', role='instructor')
-        other.set_password('secret')
+        other.set_password(TEST_PASSWORD)
         student = User(username='Student', email='student@example.com', role='student')
-        student.set_password('secret')
+        student.set_password(TEST_PASSWORD)
         db.session.add_all([teacher, other, student])
         db.session.commit()
         yield app, teacher, other, student
 
 
-def login(client, email, password='secret'):
+def login(client, email, password=TEST_PASSWORD):
     return client.post('/login', data={'email': email, 'password': password})
 
 
