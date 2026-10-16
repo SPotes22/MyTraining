@@ -11,8 +11,8 @@ Este documento resume qué se revisó, qué se corrigió en el código, qué lí
 | | Antes | Ahora |
 |---|---|---|
 | Hallazgos de seguridad de la Fase 1 (SRS V3 §9) | 6 abiertos | **6 cerrados** |
-| Otros hallazgos de seguridad encontrados en esta auditoría | — | 9 cerrados |
-| Tests automatizados | 19 | **33** (todos pasan) |
+| Otros hallazgos de seguridad encontrados en esta auditoría | — | 10 cerrados |
+| Tests automatizados | 19 | **34** (todos pasan) |
 | Prueba de carga | no existía | hecha (§4) |
 | Arranque de producción | `debug=True` en `0.0.0.0` | Gunicorn, 1 worker, `/healthz`, Dockerfile |
 | Respaldo de la base | no existía | `scripts/backup_sqlite.py` con retención |
@@ -47,6 +47,7 @@ Este documento resume qué se revisó, qué se corrigió en el código, qué lí
 | S-13 | Cualquier usuario, incluso invitados, podía subir archivos de 50 MB a `/learning/api/upload` (riesgo de llenar el disco) | Solo instructores/admin. `MAX_CONTENT_LENGTH` (antes declarado pero nunca aplicado) ahora es global, con respuesta 413 legible |
 | S-14 | Un video MP4 y un JSON de usuarios versionados en git | Retirados del índice; `app/static/uploads/` en `.gitignore` |
 | S-15 | Nombre del estudiante embebido en JS sin `tojson` | Escapado con `tojson` |
+| S-16 | *(15 oct)* Borrar un profesor con contenido y crear otro: SQLite reutiliza el id y **el nuevo profesor hereda los exámenes, bancos y resultados del anterior** | El panel rechaza borrar profesores con exámenes, bancos, clases o capacitaciones |
 
 Además: cabeceras `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`; `ProxyFix` para correr detrás de Nginx o del balanceador de GCP.
 
@@ -72,7 +73,7 @@ Los handlers de Socket.IO se importaban después de `socketio.init_app()`. Con F
 - **RF-028, recuperar contraseña:** necesita un proveedor de correo.
 - **RL-10, invitados:** cada ingreso por código crea un `User` nuevo que nunca se borra. Hace falta un trabajo periódico que los anonimice a los 90 días.
 
-**Funcionales "Must", sin cambios en esta auditoría** (detalle en `SRS_V3.1_preproduccion.md`):
+**Funcionales "Must", sin cambios en esta auditoría** (detalle en `SRS_2026-10-15.md`):
 
 - RF-007 y RN-05: no hay temporizador visible ni validación del tiempo en el servidor.
 - RF-011 y RN-02: el video no se pausa en la marca de tiempo.
@@ -149,7 +150,7 @@ El SAD (ADR-003) ya prevé la migración sin tocar la lógica de negocio. La pre
 ## 6. Cómo reproducir
 
 ```bash
-pytest                                   # 33 tests
+pytest                                   # 34 tests
 APP_ENV=preproduction SECRET_KEY=... SUPERUSER_PASSWORD=... \
   gunicorn -c gunicorn.conf.py wsgi:app  # arranque pre-producción
 curl localhost:8080/healthz              # {"status":"ok","env":"preproduction"}

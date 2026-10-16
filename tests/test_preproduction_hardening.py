@@ -227,3 +227,25 @@ def test_session_status_hides_student_names_from_non_owners(app_ctx):
     c = app.test_client()
     login(c, 'profe@example.com')
     assert c.get(f"/session/status/{ids['session']}").get_json()['students'] == ['Alumno']
+
+
+def test_instructor_with_content_cannot_be_deleted(app_ctx):
+    """Evita que un profesor nuevo herede el id (y los exámenes) de uno borrado."""
+    app, ids = app_ctx
+    with app.app_context():
+        admin = User(username='Admin', email='root@example.com', role='superuser')
+        admin.set_password('secret123')
+        db.session.add(admin)
+        db.session.commit()
+    c = app.test_client()
+    login(c, 'root@example.com')
+    c.post(f"/admin/instructor/delete/{ids['teacher']}")
+    with app.app_context():
+        assert db.session.get(User, ids['teacher']) is not None
+        empty = User(username='Sin contenido', email='vacio@example.com', role='instructor')
+        db.session.add(empty)
+        db.session.commit()
+        empty_id = empty.id
+    c.post(f'/admin/instructor/delete/{empty_id}')
+    with app.app_context():
+        assert db.session.get(User, empty_id) is None

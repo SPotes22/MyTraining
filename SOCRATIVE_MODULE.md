@@ -70,4 +70,4 @@
 
 ## Nota sobre `run.py`
 
-`run.py` es solo para desarrollo: activa el depurador de Werkzeug únicamente con `APP_ENV=development` y escuchando en `127.0.0.1`. Pre-producción usa `gunicorn -c gunicorn.conf.py wsgi:app` con un solo worker (el estado de las salas vive en memoria). Ver `docs/SAD_V3_preproduccion.md`.
+`run.py` es solo para desarrollo: activa el depurador de Werkzeug únicamente con `APP_ENV=development` y escuchando en `127.0.0.1`. Pre-producción usa `gunicorn -c gunicorn.conf.py wsgi:app` con un solo worker (el estado de las salas vive en memoria). Ver `docs/SAD_2026-10-15.md`.

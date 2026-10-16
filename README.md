@@ -60,7 +60,7 @@ Y ya, entras a `http://127.0.0.1:5000`. En desarrollo (`APP_ENV=development`, el
 ### Correr las pruebas
 
 ```bash
-pytest          # 33 tests
+pytest          # 34 tests
 ```
 
 ## 🚀 Pre-producción
@@ -89,9 +89,12 @@ curl localhost:8080/healthz
 
 | Documento | Qué tiene |
 |---|---|
+| [`docs/SRS_2026-10-15.md`](docs/SRS_2026-10-15.md) | Requisitos (funcionales, no funcionales, reglas, legales), su estado y los límites de la fase |
+| [`docs/SAD_2026-10-15.md`](docs/SAD_2026-10-15.md) | Arquitectura real, decisiones (ADR) y despliegue por fases |
+| [`docs/MANUAL_USUARIO_2026-10-15.md`](docs/MANUAL_USUARIO_2026-10-15.md) | Guía para profesores y estudiantes |
+| [`docs/MANUAL_ADMINISTRADOR_2026-10-15.md`](docs/MANUAL_ADMINISTRADOR_2026-10-15.md) | Instalación, usuarios, respaldos, monitoreo y solución de problemas |
+| [`docs/MANUAL_DESARROLLO_Y_DEPURACION_2026-10-15.md`](docs/MANUAL_DESARROLLO_Y_DEPURACION_2026-10-15.md) | Invariantes, mapa del código, recetas y depuración (personas y agentes) |
 | [`docs/AUDITORIA_PREPRODUCCION.md`](docs/AUDITORIA_PREPRODUCCION.md) | Hallazgos corregidos, prueba de carga, límites y cuándo pasar a PostgreSQL |
-| [`docs/SAD_V3_preproduccion.md`](docs/SAD_V3_preproduccion.md) | Arquitectura real, ADRs y despliegue por fases |
-| [`docs/SRS_V3.1_preproduccion.md`](docs/SRS_V3.1_preproduccion.md) | Estado de cada requisito y metas por fase |
 | [`SOCRATIVE_MODULE.md`](SOCRATIVE_MODULE.md) | Rutas y modelos del módulo de exámenes |
 
 ## 🎨 Sistema de diseño
@@ -114,7 +117,7 @@ Todo el rediseño vive en un puñado de clases nuevas dentro de [`app/templates/
 - Este repo **no comparte historial ni remoto** con `modular_exams` — se sembró como copia independiente a propósito.
 - El diseño se inspira en capturas reales que el cliente compartió de su propia cuenta de Socrative, usadas solo como referencia visual — no se reutiliza marca, logo ni código de Socrative/Showbie.
 - Sigue en construcción: biblioteca, clases y salas heredan la paleta nueva pero aún no tienen el mismo rediseño de layout que el constructor y los reportes.
-- Antes de abrir a usuarios reales falta lo legal (política de tratamiento y autorización, Ley 1581) y el temporizador del examen. Detalle en el SRS V3.1.
+- Antes de abrir a usuarios reales falta lo legal (política de tratamiento y autorización, Ley 1581) y el temporizador del examen. Detalle en el [SRS](docs/SRS_2026-10-15.md).
 
 ---
 
