@@ -2,6 +2,8 @@
 
 Plataforma Flask (SSR con Jinja2) + Socket.IO + SQLite para capacitaciones y exámenes en vivo. Fase: **pre-producción**.
 
+**Autor y responsable del proyecto: Santiago Potes Giraldo** (`potesdev@gmail.com`). En el historial ese correo aparece también como "Manuel Potes" o "SPotes22" por configuraciones locales de git; `.mailmap` los unifica. Los commits de "Claude" son trabajo asistido por IA hecho a pedido del autor.
+
 **Antes de cambiar código, lee `docs/MANUAL_DESARROLLO_Y_DEPURACION_2026-10-15.md` §1 (invariantes).** Resumen:
 
 - Gunicorn con **1 worker** (las salas viven en memoria). No subas `workers` ni instales `eventlet`/`gevent`.

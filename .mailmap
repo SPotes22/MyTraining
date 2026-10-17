@@ -1,0 +1,4 @@
+# Identidad canónica de los autores (git log, git shortlog, git blame la usan sin reescribir el historial).
+# Los commits hechos con potesdev@gmail.com aparecen con otros nombres ("Manuel Potes", "SPotes22")
+# por configuraciones locales de git; todos son de Santiago Potes Giraldo.
+Santiago Potes Giraldo <potesdev@gmail.com>
