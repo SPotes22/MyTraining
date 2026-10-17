@@ -4,6 +4,8 @@ from datetime import datetime
 from flask import render_template, request, redirect, url_for, flash, current_app
 from flask_login import login_user, logout_user, login_required, current_user
 from app.extensions import db
+from app.services import audit, password_reset
+from app.services.mailer import send_mail
 from app.models import User, ExamSession, Bank
 from app.blueprints.auth import auth_bp
 
@@ -34,6 +36,22 @@ def _register_failed_login(email):
 def _clear_failed_logins(email):
     with _failed_lock:
         _failed_logins.pop(_login_key(email), None)
+
+
+# RF-028: límite de solicitudes de recuperación por correo (en memoria, 1 worker).
+_reset_requests = {}
+
+
+def _reset_rate_limited(email):
+    limit = current_app.config.get('PASSWORD_RESET_MAX_REQUESTS', 3)
+    now = time.monotonic()
+    with _failed_lock:
+        recent = [t for t in _reset_requests.get(email, []) if now - t < 3600]
+        limited = len(recent) >= limit
+        if not limited:
+            recent.append(now)
+        _reset_requests[email] = recent
+        return limited
 
 
 @auth_bp.route('/')
@@ -163,6 +181,54 @@ def register():
         return redirect(url_for('learning.student_catalog'))
 
     return render_template('register.html', form_data={})
+
+@auth_bp.route('/forgot-password', methods=['GET', 'POST'])
+@auth_bp.route('/olvide-contrasena', methods=['GET', 'POST'])
+def forgot_password():
+    """RF-028: pide el correo y envía un enlace de un solo uso, válido 30 minutos."""
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        user = User.query.filter_by(email=email).first() if email else None
+        # Misma respuesta exista o no la cuenta: no revela qué correos están registrados.
+        if user and user.password_hash and not _reset_rate_limited(email):
+            token = password_reset.make_token(user)
+            link = url_for('auth.reset_password', token=token, _external=True)
+            minutes = current_app.config.get('PASSWORD_RESET_MAX_AGE', 1800) // 60
+            send_mail(user.email, 'Recupera tu contraseña de MyTraining',
+                      f'Hola {user.first_name or user.username},\n\n'
+                      f'Para crear una contraseña nueva abre este enlace (vale {minutes} minutos y sirve una sola vez):\n\n'
+                      f'{link}\n\nSi no lo pediste, ignora este correo: tu contraseña no cambia.\n')
+            audit.record('auth.password_reset_request', 'user', user.id)
+            db.session.commit()
+        flash('Si el correo está registrado, te enviamos un enlace para crear una contraseña nueva. Revisa también la carpeta de spam.', 'info')
+        return redirect(url_for('auth.login'))
+    return render_template('forgot_password.html')
+
+
+@auth_bp.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    user = password_reset.verify_token(token)
+    if not user:
+        flash('El enlace no es válido, ya se usó o caducó. Pide uno nuevo.', 'danger')
+        return redirect(url_for('auth.forgot_password'))
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        min_len = current_app.config.get('MIN_PASSWORD_LENGTH', 8)
+        if len(password) < min_len:
+            flash(f'La contraseña debe tener al menos {min_len} caracteres.', 'warning')
+        elif password != request.form.get('password_confirm', ''):
+            flash('Las contraseñas no coinciden.', 'warning')
+        else:
+            user.set_password(password)
+            audit.record('auth.password_reset', 'user', user.id)
+            db.session.commit()
+            with _failed_lock:
+                for key in [k for k in _failed_logins if k.endswith(f'|{user.email}')]:
+                    _failed_logins.pop(key, None)
+            flash('Contraseña actualizada. Ya puedes iniciar sesión.', 'success')
+            return redirect(url_for('auth.login'))
+    return render_template('reset_password.html', token=token)
+
 
 @auth_bp.route('/logout')
 @login_required

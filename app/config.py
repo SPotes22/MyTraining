@@ -101,6 +101,17 @@ class Config:
     LOGIN_MAX_ATTEMPTS = _env_int('LOGIN_MAX_ATTEMPTS', 5)
     LOGIN_LOCKOUT_SECONDS = _env_int('LOGIN_LOCKOUT_SECONDS', 15 * 60)
 
+    # Correo saliente (RF-028: recuperar contraseña). Sin MAIL_SERVER, en desarrollo el
+    # enlace se imprime en la consola y fuera de desarrollo se registra una advertencia.
+    MAIL_SERVER = os.environ.get('MAIL_SERVER', '').strip()
+    MAIL_PORT = _env_int('MAIL_PORT', 587)
+    MAIL_USERNAME = os.environ.get('MAIL_USERNAME', '').strip()
+    MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD') or None
+    MAIL_USE_TLS = _env_bool('MAIL_USE_TLS', True)
+    MAIL_FROM = os.environ.get('MAIL_FROM', '').strip() or MAIL_USERNAME
+    PASSWORD_RESET_MAX_AGE = _env_int('PASSWORD_RESET_MAX_AGE', 30 * 60)
+    PASSWORD_RESET_MAX_REQUESTS = _env_int('PASSWORD_RESET_MAX_REQUESTS', 3)   # por correo y hora
+
     # Orígenes permitidos para Socket.IO (coma-separados). Vacío = mismo origen.
     SOCKETIO_CORS_ORIGINS = [o.strip() for o in os.environ.get('SOCKETIO_CORS_ORIGINS', '').split(',') if o.strip()]
 
