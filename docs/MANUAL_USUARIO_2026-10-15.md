@@ -1,6 +1,6 @@
 # Manual de usuario — MyTraining
 
-**Fecha:** 15 de octubre de 2026 · **Versión de la app:** pre-producción
+**Fecha:** 15 de octubre de 2026 (actualizado el 17 de octubre: preguntas durante el video) · **Versión de la app:** pre-producción
 **Para:** profesores/instructores y estudiantes. La administración de la plataforma está en el [Manual de administrador](MANUAL_ADMINISTRADOR_2026-10-15.md).
 
 ---
@@ -10,7 +10,7 @@
 1. [Primeros pasos](#1-primeros-pasos)
 2. [Guía del estudiante](#2-guía-del-estudiante)
 3. [Guía del profesor](#3-guía-del-profesor)
-   - 3.1 Banco de preguntas · 3.2 Importar desde Excel/CSV · 3.3 Crear un examen · 3.4 Aplicar el examen en vivo · 3.5 Resultados y reportes · 3.6 Clases · 3.7 Capacitaciones · 3.8 Refuerzo automático · 3.9 Preguntas rápidas y encuestas
+   - 3.1 Banco de preguntas · 3.1.1 Preguntas durante un video · 3.2 Importar desde Excel/CSV · 3.3 Crear un examen · 3.4 Aplicar el examen en vivo · 3.5 Resultados y reportes · 3.6 Clases · 3.7 Capacitaciones · 3.8 Refuerzo automático · 3.9 Preguntas rápidas y encuestas
 4. [Lo que todavía no hace la plataforma](#4-lo-que-todavía-no-hace-la-plataforma)
 5. [Preguntas frecuentes](#5-preguntas-frecuentes)
 
@@ -66,6 +66,7 @@ Según cómo lo configuró el profesor, verás uno de tres modos:
 
 Consejos:
 
+- **Preguntas con video:** algunas preguntas aparecen mientras ves un video. Dale *play*: al llegar al minuto indicado el video se pausa y aparece la pregunta. Si recargas la página, las preguntas que ya aparecieron siguen visibles.
 - **Tus respuestas se guardan solas.** Si se cae Internet o recargas la página, al volver aparecen como las dejaste.
 - Los puntos de progreso muestran qué preguntas te faltan.
 - En **selección múltiple** puedes marcar más de una opción.
@@ -107,7 +108,7 @@ Menú del profesor: **Exámenes · Clases · Preguntas · Capacitaciones · Resu
 | Emparejamiento | Pares izquierda ↔ derecha (**Agregar par**) |
 | Ordenamiento | Ítems en el orden correcto (**Agregar ítem**) |
 | Respuesta abierta | Solo el enunciado; se revisa manualmente |
-| Video | Como opción múltiple, más una **URL de Video** (YouTube/Vimeo) |
+| Video | Como opción múltiple, más una **URL de Video** (YouTube, Vimeo o MP4). Ver §3.1.1 |
 
 En todos los tipos puedes añadir **Categoría**, **Puntos**, **URL de Imagen** y **Retroalimentación** (máximo 3000 caracteres), que el estudiante verá al terminar.
 
@@ -115,6 +116,21 @@ En todos los tipos puedes añadir **Categoría**, **Puntos**, **URL de Imagen** 
 4. **Editar, duplicar o eliminar** desde cada tarjeta. Para borrar varias, marca **Seleccionar todo** o las casillas y elimina.
 
 > **No se puede eliminar** una pregunta (ni el banco que la contiene) si ya tiene respuestas de estudiantes o está en un examen activo. Así se protege el historial. Quítala del examen o archiva el examen primero.
+
+#### 3.1.1 Preguntas durante un video
+
+Cualquier pregunta con **URL de Video** puede aparecer en un minuto concreto del video, en lugar de mostrarse desde el inicio:
+
+1. En **URL de Video** pega un enlace de **YouTube** o **Vimeo**, un **MP4/WEBM** en `https://…`, o un archivo subido (`/static/uploads/…`). Otros tipos de enlace se rechazan por seguridad.
+2. En *Pregunta durante el video* completa:
+   - **Inicio del video:** desde dónde arranca (por ejemplo `0:30`). Opcional.
+   - **Mostrar la pregunta en:** el minuto en que aparece (por ejemplo `1:35`). Debe ser posterior al inicio. Vacío = la pregunta se ve desde el principio.
+   - **Pausar el video al mostrarla:** activado por defecto.
+3. Guarda. El estudiante verá *"la pregunta aparecerá en el minuto 1:35"*; al llegar ahí, el video se pausa y aparece la pregunta.
+
+Puedes escribir los tiempos en segundos (`95`) o en formato `mm:ss` / `h:mm:ss`. La pregunta no viaja en la página del estudiante: el servidor solo la entrega cuando ya pasó ese tiempo, así que no se puede leer antes adelantando la página.
+
+> **Limitación actual:** el video se pausa al aparecer la pregunta, pero el estudiante puede volver a darle *play* sin responder.
 
 ### 3.2 Importar preguntas desde Excel o CSV
 
@@ -129,7 +145,8 @@ En *Importar Preguntas Excel / CSV*, elige el **banco destino** y el archivo (`.
 | `correct_option` | Para opción múltiple, V/F y video | **Posición** de la correcta, **empezando en 0** (`0` = la primera) |
 | `pairs` | Para emparejamiento | `izquierda:derecha` separados por `\|`, por ejemplo `HTTP:80\|HTTPS:443` |
 | `items` | Para ordenamiento | Ítems **en el orden correcto** separados por `\|` |
-| `feedback_text`, `image_url`, `video_url` | No | Retroalimentación y enlaces |
+| `feedback_text`, `image_url`, `video_url` | No | Retroalimentación y enlaces (`video_url` debe ser `https://…` o `/static/…`; otra cosa se descarta) |
+| `video_start`, `video_question_at` | No | Inicio del video y minuto en que aparece la pregunta (§3.1.1). Si los tiempos no son válidos, la pregunta se importa sin ellos |
 
 Ejemplo (CSV):
 
@@ -209,9 +226,15 @@ Las clases son **carpetas** para organizar exámenes por grupo o asignatura:
 4. Los archivos se suben desde el bloque (máximo **50 MB**). Para videos largos usa YouTube o Vimeo.
 5. **Vista Previa / Previsualizar** muestra el curso como lo verá el estudiante.
 6. Cambia el estado a **publicado** para que aparezca en *Mis cursos*. En borrador solo lo ves tú.
-7. **Exportar** descarga el curso completo en JSON; **Importar (JSON)** lo trae a tu cuenta. Sirve para copiar cursos entre plataformas.
+7. **Exportar** descarga el curso completo en JSON; **Importar (JSON)** lo trae a tu cuenta. Sirve para copiar cursos entre plataformas. Las preguntas dentro de videos se conservan al duplicar o importar.
 
-> **Limitación actual:** las preguntas dentro de un video no pausan la reproducción en el segundo indicado.
+**Preguntas dentro de un video de la lección:**
+
+1. Crea en la misma lección el bloque de **video** (YouTube, Vimeo o MP4/WEBM) y uno o más bloques de **pregunta**.
+2. En la configuración del bloque de video, en **Preguntas dentro del video**, indica el **Inicio del video (mm:ss)** y, para cada pregunta, el minuto en que aparece y si se pausa el video (**Pausar el video al mostrar la pregunta**).
+3. Al estudiante, esas preguntas se le muestran solo cuando el video llega a su minuto. Si ya las respondió antes, aparecen directamente.
+
+> Solo tú (y los administradores) pueden editar tus capacitaciones. Mientras estén en borrador, sus preguntas no se entregan a nadie más.
 
 ### 3.8 Refuerzo automático
 
@@ -245,7 +268,7 @@ Conviene saberlo antes de usarla con nota real:
 | Temporizador del examen | No hay contador ni cierre automático por tiempo | Controla el tiempo tú y usa **Finalizar** |
 | Calificar respuestas abiertas | Quedan "Pendiente" y en 0 | Revísalas en el reporte y ajusta fuera de la plataforma |
 | Respuesta corta autocalificada | No existe | Usa opción múltiple o abierta |
-| Pausa del video en preguntas | No pausa | Pon la pregunta como bloque aparte después del video |
+| Bloquear el video hasta responder | El video se pausa y aparece la pregunta, pero el estudiante puede reanudarlo sin contestar | Indica en las instrucciones que deben responder antes de continuar |
 | Alertas antifraude | El panel existe, pero el examen no detecta el cambio de pestaña | Supervisa presencialmente |
 | Validación de importación | No previsualiza ni detalla errores | Importa en lotes pequeños |
 | Vista "Mis intentos" del estudiante | No existe | El estudiante ve su resultado al enviar |

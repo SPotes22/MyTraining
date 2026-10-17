@@ -31,9 +31,10 @@
 | I-3 | **Los módulos de sockets se importan antes de `socketio.init_app()`** | Si se importan después, solo la primera app creada en el proceso recibe los handlers (tests y recargas quedan sin eventos) | `app/__init__.py:create_app` |
 | I-4 | **En sockets, la identidad sale de `current_user`, nunca del payload** | Antes un estudiante podía mandar el `student_id` de otro | `app/realtime/sockets.py` |
 | I-5 | **Toda acción de profesor por socket verifica la propiedad** con `_owns_room` / `_owns_db_session` | Evita que cualquiera pause o inicie salas ajenas | `app/realtime/sockets.py` |
-| I-6 | **Toda ruta que muestre o cambie datos de un examen, sala o intento verifica propiedad**, no solo el rol | Varios IDOR cerrados (resultados, lobby, cierre) | `app/blueprints/*/routes.py` |
+| I-6 | **Toda ruta que muestre o cambie datos de un examen, sala, intento o capacitación verifica propiedad**, no solo el rol. En la API del editor de capacitaciones usa `_can_edit_learning` | Varios IDOR cerrados (resultados, lobby, cierre; el 17 oct, toda la API `/learning/api/*` del editor, que cualquier usuario podía modificar) | `app/blueprints/*/routes.py` |
 | I-7 | **No desactives CSRF.** Los POST nuevos funcionan solos si la plantilla extiende `base.html` (inyección automática) | RNF-03 | `app/templates/base.html` |
 | I-8 | **Variables de servidor dentro de `<script>` van con `\|tojson`** | Autoescape HTML no basta en contexto JS | Plantillas |
+| I-14 | **Toda URL que el usuario escribe y termina en un `src`/`href` pasa por una lista blanca de esquemas** (`video_cues.is_safe_video_url`: solo `http(s)://` o rutas `/…`) | `javascript:`/`data:` en un `<iframe src>` es XSS almacenado | `app/services/video_cues.py` |
 | I-9 | **No borres en cascada datos con historial**: preguntas o bancos con respuestas, exámenes con intentos, profesores con contenido | RN-10 y RN-13, y SQLite reutiliza ids (§8) | `questions/routes.py`, `exams/routes.py`, `admin/routes.py` |
 | I-10 | **No versiones datos de usuario**: `app/static/uploads/`, `*.db`, `.env` | Fuga de datos | `.gitignore` |
 | I-11 | **Nada de secretos por defecto fuera de desarrollo.** Si agregas un secreto, exígelo en `validate_config`; si un valor llegó a publicarse, agrega su SHA-256 a `LEAKED_SECRET_SHA256` | `validate_config` bloquea el arranque inseguro | `app/config.py` |
@@ -66,7 +67,7 @@ La base queda en `instance/database.db`: las rutas `sqlite:///` relativas se res
 
 | Tarea | Comando |
 |---|---|
-| Todos los tests | `pytest` (35 tests, ~30 s) |
+| Todos los tests | `pytest` (82 tests, ~45 s) |
 | Un archivo / un test | `pytest tests/test_preproduction_hardening.py -k socket -s` |
 | Arrancar como pre-producción en local | `APP_ENV=preproduction SESSION_COOKIE_SECURE=0 SECRET_KEY=$(python -c 'import secrets;print(secrets.token_hex(32))') SUPERUSER_PASSWORD="$(python -c 'import secrets;print(secrets.token_urlsafe(16))')" gunicorn -c gunicorn.conf.py wsgi:app` |
 | Salud | `curl localhost:8080/healthz` |
@@ -156,8 +157,12 @@ app/
     exam_builder.py    Guardar, duplicar y validar preguntas; agregar al examen
     learning_service.py   Crear, exportar e importar capacitaciones
     remediation_service.py Curso de refuerzo (PASSING_SCORE = 40)
+    video_cues.py      RF-011: URL → proveedor (YouTube/Vimeo/archivo) y validación de esquema,
+                       metadatos JSON del cue (questions.video_metadata), tiempos mm:ss,
+                       desbloqueo en servidor (cue_wait_seconds) y cues de bloques de video
   templates/           Jinja2; base.html = diseño + inyección CSRF + navegación por rol
-  static/js/           instructor_lobby.js, learning_builder.js, learning_student.js
+  static/js/           instructor_lobby.js, learning_builder.js, learning_student.js,
+                       video_cues.js (sigue la reproducción y revela/pide la pregunta en su minuto)
 scripts/               backup_sqlite.py, loadtest/
 tests/                 pytest (ver §7)
 docs/                  SRS, SAD, Auditoría, manuales
@@ -288,6 +293,15 @@ Mientras no exista Alembic:
 - Valores por defecto: `services/learning_service.py`.
 - La configuración se guarda en `Block.configuracion` (JSON): no hacen falta columnas nuevas.
 - Si el bloque sube archivos, usa `/learning/api/upload` (solo instructores, `MAX_CONTENT_LENGTH`).
+- Toda ruta nueva de `/learning/api/*` que edite contenido llama a `_can_edit_learning(...)` y devuelve `_forbidden()` (I-6). Si el bloque guarda una URL que se renderiza, valídala con `is_safe_video_url` o equivalente (I-14).
+
+### 5.8 Preguntas durante un video (RF-011)
+
+Flujo: el profesor guarda `video_url` + tiempos → `exam_builder.save_video_cue` arma `questions.video_metadata` (JSON con proveedor, `start`, `question_at`, `pause_on_question`) y sincroniza `video_timestamp` → la instantánea de la sala copia `video_metadata` → `presentar_examen.html` dibuja el reproductor **sin** el enunciado → `video_cues.js` sigue el tiempo y, al llegar al cue, pide `GET /exam/presentar/<sala>/video-question/<pregunta>` → el servidor responde 425 con `retry_after` si aún no pasó ese tiempo desde que el estudiante abrió la página (marca guardada en la sesión firmada), o el HTML de la pregunta.
+
+En capacitaciones el equivalente es `Block.configuracion` del bloque de video (`start`, `cues: [{at, question_block_id, pause}]`), validado por `normalize_learning_video_cues` y servido por `GET /learning/api/block/<id>/video-question` sin las respuestas correctas (`sanitize_question_block_config`).
+
+Para cambiarlo: los tiempos y la validación están en `services/video_cues.py`; la lógica del reproductor en `static/js/video_cues.js`; los tests en `tests/test_video_cues.py`.
 
 ---
 
@@ -328,6 +342,7 @@ Mientras no exista Alembic:
 | `test_socrative_module.py` | Constructor, bancos, clases, papelera, autorización de salas |
 | `test_session_report_and_snapshots.py` | Instantáneas e integridad del reporte |
 | `test_remediation_service.py` | Curso de refuerzo y no duplicación |
+| `test_video_cues.py` | RF-011: tiempos y URLs de video, entrega diferida de preguntas, cues en capacitaciones, permisos del editor de capacitaciones |
 | `test_preproduction_hardening.py` | Seguridad y reglas: IDOR, sockets, CSRF, bloqueo de login, RN-09, RN-10, RN-12, RN-13, borrado de profesores, `validate_config`, `/healthz` |
 
 ### 7.2 Patrón de fixture
@@ -367,6 +382,8 @@ def app_ctx(tmp_path):
 | `ensure_schema` en vez de Alembic | Solo agrega columnas | Bloquea la migración limpia a PostgreSQL | RNF-13 |
 | Llaves foráneas no aplicadas en SQLite | Borrados que en PostgreSQL fallarían | Probar contra PostgreSQL antes de migrar | I-12 |
 | SQLite reutiliza ids | El último id borrado se reasigna | Herencia de datos si se borra un usuario con contenido (ya bloqueado en el panel) | Auditoría S-16 |
+| Video sin bloqueo al responder | `video_cues.js` pausa el video en el cue, pero no impide reanudarlo sin responder | RN-02 y CA-03 parciales | SRS §7 |
+| Desbloqueo de preguntas de video por tiempo de reloj | El servidor mide el tiempo desde que se abrió la página, no la reproducción real; con la tolerancia de 3 s, un estudiante que espera sin reproducir también recibe la pregunta | Aceptado: evita leerla antes, no garantiza haber visto el video | `CUE_UNLOCK_TOLERANCE_SECONDS` |
 | `exams/events.py` | Código muerto que referencia un `socketio` inexistente | Confusión | Borrar en una limpieza |
 | Alertas antifraude | Existe el handler `anti_cheat_alert`, pero ningún cliente lo emite | El panel del lobby queda vacío | RF-018 |
 | `PASSING_SCORE = 40` fijo | No usa `exam.passing_score` | Umbrales inconsistentes | RN-07 |

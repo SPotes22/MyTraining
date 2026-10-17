@@ -9,7 +9,8 @@ Plataforma Flask (SSR con Jinja2) + Socket.IO + SQLite para capacitaciones y ex�
 - Gunicorn con **1 worker** (las salas viven en memoria). No subas `workers` ni instales `eventlet`/`gevent`.
 - En `create_app`, los módulos de sockets se importan **antes** de `socketio.init_app()`.
 - Sockets: identidad desde `current_user`, nunca del payload; acciones de profesor con `_owns_room`.
-- Rutas: verifica rol **y** propiedad del recurso; agrega un test de acceso cruzado (403).
+- Rutas: verifica rol **y** propiedad del recurso (en `/learning/api/*`, `_can_edit_learning`); agrega un test de acceso cruzado (403).
+- URLs que escribe el usuario y terminan en un `src`: solo `http(s)://` o rutas `/…` (`video_cues.is_safe_video_url`).
 - CSRF siempre activo; `base.html` inyecta el token en formularios y `fetch`.
 - No borres en cascada datos con historial (RN-10, RN-13); no versiones `uploads/`, `*.db` ni `.env`.
 - **Ningún secreto literal** (ni de ejemplo) en código, tests, `env.example` o docs: usa marcadores `<CLAVE>` o valores generados. Un valor filtrado se agrega como SHA-256 a `LEAKED_SECRET_SHA256`.
