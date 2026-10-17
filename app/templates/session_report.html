@@ -138,6 +138,46 @@
         </div>
     </div>
 
+    <!-- RF-027: CALIFICACIÓN MANUAL DE RESPUESTAS ABIERTAS -->
+    {% if open_answers %}
+    {% set pending_count = open_answers|selectattr('1.is_pending_review')|list|length %}
+    <div class="card border-0 shadow-sm rounded-3 mb-4 bg-white" id="calificar">
+        <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center px-4 pt-3">
+            <h5 class="fw-bold mb-0"><i class="bi bi-pencil-square text-primary me-2"></i>Respuestas abiertas</h5>
+            {% if pending_count %}
+              <span class="badge bg-warning text-dark">{{ pending_count }} por calificar</span>
+            {% else %}
+              <span class="badge bg-success">Todas calificadas</span>
+            {% endif %}
+        </div>
+        <div class="card-body px-4">
+            <p class="text-muted small mb-3">Las respuestas abiertas no cuentan en la nota hasta que las califiques. Al guardar, la nota del estudiante se recalcula.</p>
+            {% for att, ans, max_pts in open_answers %}
+            <form method="post" action="{{ url_for('exams.grade_answer_manually', answer_id=ans.id) }}"
+                  class="border rounded-3 p-3 mb-2 {% if ans.is_pending_review %}border-warning-subtle bg-warning-subtle{% endif %}">
+                <div class="d-flex flex-wrap justify-content-between gap-2 mb-1">
+                    <strong>{{ att.student.username if att.student else 'Estudiante' }}</strong>
+                    {% if ans.is_pending_review %}
+                      <span class="badge bg-warning text-dark">Pendiente</span>
+                    {% else %}
+                      <span class="badge bg-success-subtle text-success-emphasis border">Calificada: {{ ans.points_awarded|round(2) }} / {{ max_pts|round(2) }}</span>
+                    {% endif %}
+                </div>
+                <div class="small text-muted mb-1">{{ ans.display_statement }}</div>
+                <div class="bg-white border rounded p-2 mb-2" style="white-space: pre-wrap;">{{ ans.answer_text or 'Sin respuesta' }}</div>
+                <div class="d-flex align-items-center gap-2">
+                    <label class="small fw-semibold" for="points_{{ ans.id }}">Puntos</label>
+                    <input id="points_{{ ans.id }}" name="points" type="number" step="0.01" min="0" max="{{ max_pts }}"
+                           value="{{ '' if ans.is_pending_review else ans.points_awarded }}" class="form-control form-control-sm" style="width: 7rem;" required>
+                    <span class="small text-muted">de {{ max_pts|round(2) }}</span>
+                    <button class="btn btn-sm btn-primary ms-auto">{{ 'Calificar' if ans.is_pending_review else 'Actualizar' }}</button>
+                </div>
+            </form>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
     <!-- MAIN REPORT NAVIGATION TABS -->
     <div class="card border-0 shadow-sm rounded-3 mb-4 bg-white">
         <div class="card-header bg-white border-bottom-0 pt-3 px-4">
@@ -273,7 +313,7 @@
                                                 <button type="button" class="soc-live-cell soc-live-incorrect border-0"
                                                         data-bs-toggle="modal" data-bs-target="#detailModal"
                                                         onclick="showAnswerModal('{{ row.student_name }}', '{{ snapshots[loop.index0].statement|replace("'", "\\'") }}', '{{ ans_cell.student_answer|replace("'", "\\'") }}', '{{ ans_cell.correct_answer|replace("'", "\\'") }}', false, '{{ ans_cell.points_awarded }}', '{{ ans_cell.feedback|replace("'", "\\'") }}')"
-                                                        title="Incorrecta (0 pts) - Click para ver">
+                                                        title="{{ 'Calificada' if ans_cell.points_awarded else 'Incorrecta' }} ({{ ans_cell.points_awarded or 0 }} pts) - Click para ver">
                                                     <i class="bi bi-x-lg"></i>
                                                     <span class="soc-live-answer-text">{{ ans_cell.student_answer }}</span>
                                                 </button>
@@ -560,9 +600,15 @@
                                                         <i class="bi bi-check-circle-fill me-1"></i> Correcta (+{{ ans_item.points_awarded }} pts)
                                                     </span>
                                                 {% else %}
+                                                    {% if ans_item.points_awarded %}
+                                                    <span class="badge bg-warning-subtle text-warning-emphasis fw-bold px-2 py-1">
+                                                        <i class="bi bi-pencil-square me-1"></i> Calificada (+{{ ans_item.points_awarded }} pts)
+                                                    </span>
+                                                    {% else %}
                                                     <span class="badge bg-danger-subtle text-danger fw-bold px-2 py-1">
                                                         <i class="bi bi-x-circle-fill me-1"></i> Incorrecta (0 pts)
                                                     </span>
+                                                    {% endif %}
                                                 {% endif %}
                                             </div>
                                         </div>

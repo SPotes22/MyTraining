@@ -12,6 +12,10 @@
             <div class="card-body text-center py-4">
                 <h5 class="text-muted mb-2">Examen: {{ attempt.session.exam.title }}</h5>
                 <h1 class="display-3 fw-bold mb-3">{{ attempt.score }}%</h1>
+                {% set pending_review = answers|selectattr('is_pending_review')|list|length %}
+                {% if pending_review %}
+                <p class="small mb-3"><i class="bi bi-hourglass-split me-1"></i>{{ pending_review }} respuesta(s) abierta(s) pendiente(s) de revisión: la nota puede cambiar cuando el profesor las califique.</p>
+                {% endif %}
                 
                 {% if attempt.score >= attempt.session.exam.passing_score %}
                     <span class="badge bg-success fs-5 px-4 py-2">¡Aprobado! 🎉</span>
@@ -27,13 +31,16 @@
         <h4 class="mb-3">Desglose de Preguntas</h4>
         {% for ans in answers %}
             {# Determinar si es pregunta abierta (is_correct es None) #}
-            {% set is_open = ans.is_correct is none %}
+            {% set is_open = ans.is_pending_review %}
+            {% set graded_open = ans.is_open_answer and not ans.is_pending_review %}
             <div class="card mb-3 border-start border-4 {% if is_open %}border-info{% elif ans.is_correct %}border-success{% else %}border-danger{% endif %}">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <h5 class="card-title mb-0">Pregunta {{ loop.index }}</h5>
                         {% if is_open %}
                             <span class="badge bg-info text-dark">⏳ Pendiente revisión</span>
+                        {% elif graded_open %}
+                            <span class="badge bg-primary">Calificada por el profesor (+{{ ans.points_awarded|round(2) }})</span>
                         {% elif ans.is_correct %}
                             <span class="badge bg-success">Correcta (+{{ ans.points_awarded }})</span>
                         {% else %}

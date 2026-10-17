@@ -10,6 +10,7 @@ from app.realtime.manager import session_manager
 from app.modes import registry
 from app.services.exam_content import normalize_room_code, create_session_question_snapshots
 from app.services import audit
+from app.services.grading import answer_max_points, grade_open_answer
 from app.services.video_cues import cue_wait_seconds, mark_cue_viewed
 from app.models import (
     User, Bank, Question, QuestionOption, Exam, ExamQuestion, 
@@ -394,7 +395,9 @@ def submit_exam(session_id):
             continue
         live_answer = live_answers_map.get(q.id)
         eq_points = float(eq.points if eq.points is not None else 1.0)
-        total_possible += eq_points
+        # RN-08: una respuesta abierta no cuenta en la nota hasta que el profesor la califica.
+        if q.question_type != 'open_answer':
+            total_possible += eq_points
         
         snap = next((s for s in snapshots if s.original_question_id == q.id or s.order_index == eq.order_index), None)
         selected_option_text = None
@@ -850,8 +853,33 @@ def session_report(session_id):
         attempts=attempts,
         summary=summary,
         matrix_rows=matrix_rows,
-        question_analytics=question_analytics
+        question_analytics=question_analytics,
+        open_answers=[(att, ans, answer_max_points(ans)) for att in attempts for ans in att.answers if ans.is_open_answer],
     )
+
+
+@exams_bp.route('/instructor/answer/<int:answer_id>/grade', methods=['POST'])
+@login_required
+def grade_answer_manually(answer_id):
+    """RF-027: el profesor califica una respuesta abierta y se recalcula la nota del intento."""
+    answer = StudentAnswer.query.get_or_404(answer_id)
+    session_obj = answer.attempt.session
+    if current_user.role not in ['superuser', 'admin'] and (
+            current_user.role != 'instructor' or session_obj.exam.instructor_id != current_user.id):
+        return 'Acceso denegado', 403
+    if not answer.is_open_answer:
+        flash('Solo se califican a mano las respuestas abiertas.', 'warning')
+        return redirect(url_for('exams.session_report', session_id=session_obj.id))
+    try:
+        attempt = grade_open_answer(answer, request.form.get('points'), current_user.id)
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+        return redirect(url_for('exams.session_report', session_id=session_obj.id) + '#calificar')
+    audit.record('answer.grade', 'answer', answer.id, attempt_id=attempt.id,
+                 points=answer.points_awarded, score=attempt.score)
+    db.session.commit()
+    flash(f'Respuesta calificada: {answer.points_awarded:g} pts. Nueva nota de {attempt.student.username}: {attempt.score:g} %.', 'success')
+    return redirect(url_for('exams.session_report', session_id=session_obj.id) + '#calificar')
 
 @exams_bp.route('/instructor/session/<int:session_id>/results.xlsx')
 @login_required

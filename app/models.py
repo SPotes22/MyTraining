@@ -235,9 +235,21 @@ class StudentAnswer(db.Model):
     answer_text = db.Column(db.Text, nullable=True)
     is_correct = db.Column(db.Boolean, default=False)
     points_awarded = db.Column(db.Float, default=0.0)
+    # RF-027: calificación manual de respuestas abiertas
+    graded_at = db.Column(db.DateTime, nullable=True)
+    graded_by = db.Column(db.Integer, nullable=True)
     question = db.relationship('Question')
     selected_option = db.relationship('QuestionOption')
     snapshot = db.relationship('SessionQuestionSnapshot', backref='student_answers')
+
+    @property
+    def is_open_answer(self):
+        qtype = (self.snapshot.question_type if self.snapshot else None) or (self.question.question_type if self.question else None)
+        return qtype == 'open_answer'
+
+    @property
+    def is_pending_review(self):
+        return self.is_open_answer and self.graded_at is None
 
     @property
     def display_statement(self):

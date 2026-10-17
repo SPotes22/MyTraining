@@ -49,6 +49,8 @@ def ensure_schema():
         _add_column_if_missing(conn, attempt_columns, 'exam_attempts', 'max_points', 'FLOAT DEFAULT 0')
         _add_column_if_missing(conn, answer_columns, 'student_answers', 'answer_text', 'TEXT')
         _add_column_if_missing(conn, answer_columns, 'student_answers', 'points_awarded', 'FLOAT DEFAULT 0')
+        _add_column_if_missing(conn, answer_columns, 'student_answers', 'graded_at', 'DATETIME')
+        _add_column_if_missing(conn, answer_columns, 'student_answers', 'graded_by', 'INTEGER')
         _add_column_if_missing(conn, answer_columns, 'student_answers', 'question_snapshot_id', 'INTEGER')
         _add_column_if_missing(conn, answer_columns, 'student_answers', 'question_statement', 'TEXT')
         _add_column_if_missing(conn, answer_columns, 'student_answers', 'selected_option_text', 'TEXT')
