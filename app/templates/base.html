@@ -69,22 +69,24 @@
 
         :root {
             /* Socrative-inspired accents: cyan for actions, orange for CTAs, green for correct/success */
-            --primary: #2ab6d1;
-            --primary-dark: #1c9db6;
-            --accent-orange: #f4823a;
-            --accent-orange-dark: #e06a20;
+            /* RNF-11 (WCAG 2.1 AA, 4.5:1): el cian #2ab6d1 y el naranja #f4823a no daban
+               contraste con texto blanco (2,4 y 2,6). Mismos tonos, más oscuros. */
+            --primary: #0b7a90;
+            --primary-dark: #086274;
+            --accent-orange: #c2410c;
+            --accent-orange-dark: #9a3412;
 
             --background: #f6f8fa;
             --surface: #ffffff;
 
             --text: #22303f;
-            --muted: #6b7a8d;
+            --muted: #5b6878;
 
             --border: #e6e9ee;
 
-            --success: #4caf50;
+            --success: #2e7d32;  /* RNF-11: #4caf50 con texto blanco daba 2,8 */
             --warning: #f4823a;
-            --danger: #ef4444;
+            --danger: #b91c1c;   /* RNF-11: #ef4444 sobre fondos rosados daba 3,4 */
             --purple: #8b5cf6;
 
             --radius-sm: 10px;
@@ -384,7 +386,7 @@
             border-color: var(--primary);
 
             box-shadow:
-                0 0 0 3px rgba(37, 99, 235, 0.12);
+                0 0 0 3px rgba(11, 122, 144, 0.45);  /* RNF-11: el anillo de 0,12 casi no se veía */
         }
 
 
@@ -498,13 +500,13 @@
             background: var(--primary);
             color: #ffffff;
         }
-        .soc-btn-pill-cyan-solid:hover { background: var(--primary-dark); color: #fff; box-shadow: 0 6px 14px rgba(42,182,209,0.28); }
+        .soc-btn-pill-cyan-solid:hover { background: var(--primary-dark); color: #fff; box-shadow: 0 6px 14px rgba(11,122,144,0.28); }
 
         .soc-btn-pill-orange {
             background: var(--accent-orange);
             color: #ffffff;
         }
-        .soc-btn-pill-orange:hover { background: var(--accent-orange-dark); color: #fff; box-shadow: 0 6px 14px rgba(244,130,58,0.3); }
+        .soc-btn-pill-orange:hover { background: var(--accent-orange-dark); color: #fff; box-shadow: 0 6px 14px rgba(194,65,12,0.3); }
 
         .soc-btn-pill-outline {
             background: transparent;
@@ -1027,7 +1029,7 @@
     .div5 .nav-tab-btn.active {
         background: #fef2f2;
         color: var(--danger);
-        border-color: #ef4444;
+        border-color: var(--danger);
         box-shadow: 0 2px 8px rgba(239, 68, 68, 0.12);
     }
 
@@ -1090,6 +1092,30 @@
 
 
 
+
+        /* RNF-11: Bootstrap usa en texto colores que no llegan a 4.5:1 sobre fondos claros
+           (p. ej. .text-success sobre .bg-success-subtle = 3,5). Se usan sus tonos "emphasis". */
+        .text-primary { color: #0a58ca !important; }
+        .text-info { color: #087990 !important; }
+        .bg-success-subtle.text-success, .bg-success-subtle .text-success { color: var(--bs-success-text-emphasis) !important; }
+        .bg-primary-subtle.text-primary, .bg-primary-subtle .text-primary { color: var(--bs-primary-text-emphasis) !important; }
+        .bg-warning-subtle.text-warning, .bg-warning-subtle .text-warning { color: var(--bs-warning-text-emphasis) !important; }
+        .bg-info-subtle.text-info, .bg-info-subtle .text-info { color: var(--bs-info-text-emphasis) !important; }
+        .bg-danger-subtle.text-danger, .bg-danger-subtle .text-danger { color: var(--bs-danger-text-emphasis) !important; }
+        :root { --bs-link-color: #0a58ca; --bs-link-color-rgb: 10, 88, 202; }
+        .btn-outline-primary { --bs-btn-color: #0a58ca; --bs-btn-border-color: #0a58ca; --bs-btn-hover-bg: #0a58ca; --bs-btn-hover-border-color: #0a58ca; }
+        .btn-outline-info { --bs-btn-color: #087990; --bs-btn-border-color: #087990; --bs-btn-hover-bg: #087990; --bs-btn-hover-border-color: #087990; --bs-btn-hover-color: #fff; }
+        .bg-purple-subtle { background-color: #ede9fe !important; }
+        .text-purple { color: #5b21b6 !important; }
+        .text-success { color: #146c43 !important; }
+        /* RNF-11 (2.4.7): foco visible al navegar con teclado en enlaces, botones y controles propios. */
+        a:focus-visible, button:focus-visible, .btn:focus-visible, [tabindex]:focus-visible,
+        .form-check-input:focus-visible, .soc-title-input:focus-visible {
+            outline: 3px solid var(--primary) !important;
+            outline-offset: 2px;
+        }
+        .text-secondary { color: #5c636a !important; }
+        .btn-outline-secondary { --bs-btn-color: #5c636a; --bs-btn-border-color: #5c636a; --bs-btn-hover-bg: #5c636a; --bs-btn-hover-border-color: #5c636a; }
     </style>
 
     {% block head %}{% endblock %}
@@ -1110,7 +1136,8 @@
             <!-- Brand -->
             <a
                 class="navbar-brand brand"
-                href="{{ url_for('exams.instructor_dashboard') }}"
+                href="{{ url_for('auth.home') }}"
+                aria-label="MyTraining: ir al inicio"
             >
                 <span class="brand-mark">
                     <i class="bi bi-lightning-charge-fill"></i>
@@ -1426,6 +1453,22 @@
          ========================================================= -->
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+    // RNF-11: muchas plantillas ponen <label class="form-label"> sin "for". Se asocia al
+    // primer campo que le sigue dentro del mismo bloque, para que el lector de pantalla
+    // anuncie su nombre. En plantillas nuevas usa for/id directamente.
+    document.querySelectorAll('label.form-label:not([for])').forEach(function (label, i) {
+        if (label.querySelector('input, select, textarea')) return;
+        var field = null;
+        for (var el = label.nextElementSibling; el && !field; el = el.nextElementSibling) {
+            field = el.matches('input, select, textarea') ? el : el.querySelector('input, select, textarea');
+        }
+        if (!field || field.type === 'hidden' || (field.labels && field.labels.length)) return;
+        if (!field.id) field.id = 'campo-auto-' + i;
+        label.htmlFor = field.id;
+    });
+    </script>
 
     {% if current_user.is_authenticated and current_user.role in ['instructor', 'superuser', 'admin'] %}
     <script>

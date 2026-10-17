@@ -427,7 +427,7 @@ function saveProgressToBackend(timeDelta) {
         const pText = document.getElementById('progressPercentText');
         const sText = document.getElementById('scoreText');
 
-        if (pBar) pBar.style.width = `${data.progress_percent}%`;
+        if (pBar) { pBar.style.width = `${data.progress_percent}%`; pBar.setAttribute('aria-valuenow', data.progress_percent); }
         if (pText) pText.textContent = `${data.progress_percent.toFixed(1)}%`;
         if (sText) sText.textContent = `${data.score.toFixed(1)} Pts`;
 

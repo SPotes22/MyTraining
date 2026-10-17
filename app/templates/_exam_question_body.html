@@ -40,7 +40,7 @@
     <div class="row align-items-center mb-3">
       <div class="col-md-5 fw-semibold">{{ pair.left_text }}</div>
       <div class="col-md-7">
-        <select name="question_{{ q.id }}_pair_{{ pair.id }}" class="form-select"
+        <select name="question_{{ q.id }}_pair_{{ pair.id }}" class="form-select" aria-label="Pareja de {{ pair.left_text }}"
                 data-question-id="{{ q.id }}" data-pair-id="{{ pair.id }}">
           <option value="">-- Selecciona --</option>
           {% for right in item.right_options %}

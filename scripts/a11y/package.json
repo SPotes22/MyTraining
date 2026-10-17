@@ -1,0 +1,9 @@
+{
+  "name": "mytraining-a11y",
+  "private": true,
+  "description": "Auditoría de accesibilidad (RNF-11). npm ci && node axe_audit.js ...",
+  "dependencies": {
+    "axe-core": "4.10.3",
+    "playwright": "1.56.1"
+  }
+}

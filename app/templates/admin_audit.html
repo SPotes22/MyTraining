@@ -11,7 +11,7 @@
 
 <form class="row g-2 mb-3" method="get">
     <div class="col-sm-5">
-        <select name="action" class="form-select">
+        <select name="action" class="form-select" aria-label="Filtrar por acción">
             <option value="">Todas las acciones</option>
             {% for a in actions %}<option value="{{ a }}" {% if a == action %}selected{% endif %}>{{ a }}</option>{% endfor %}
         </select>

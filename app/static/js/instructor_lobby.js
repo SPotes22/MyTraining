@@ -66,7 +66,7 @@ function applyPauseUI() {
         btn.classList.replace('btn-warning', 'btn-success');
     }
     if (banner) banner.classList.remove('d-none');
-    if (badge)  badge.style.background = '#f59e0b';
+    if (badge)  badge.style.background = '#b45309';
     if (text)   text.textContent = 'PAUSADO';
 }
 
@@ -83,7 +83,7 @@ function applyResumeUI() {
         btn.classList.replace('btn-success', 'btn-warning');
     }
     if (banner) banner.classList.add('d-none');
-    if (badge)  badge.style.background = '#22c55e';
+    if (badge)  badge.style.background = '#15803d';
     if (text)   text.textContent = 'EN PROGRESO';
 }
 
@@ -93,7 +93,7 @@ socket.on('exam_resumed', () => applyResumeUI());
 socket.on('exam_started', data => {
     const badge = document.getElementById('session-status-badge');
     const text  = document.getElementById('session-status-text');
-    if (badge) badge.style.background = '#22c55e';
+    if (badge) badge.style.background = '#15803d';
     if (text)  text.textContent = data.status || 'EN PROGRESO';
 
     document.getElementById('btn-start')?.classList.add('d-none');

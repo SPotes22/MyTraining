@@ -28,3 +28,6 @@ instance/
 .coverage
 .coverage.*
 htmlcov/
+
+# Herramientas de Node (scripts/a11y)
+node_modules/

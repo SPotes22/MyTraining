@@ -99,7 +99,7 @@
       <label class="form-label small fw-semibold text-muted mb-1"><i class="bi bi-search me-1"></i>Buscar enunciado o categoría</label>
       <div class="input-group">
         <span class="input-group-text bg-light border-end-0"><i class="bi bi-search text-muted"></i></span>
-        <input name="q" value="{{ search or '' }}" class="form-control border-start-0 ps-0" placeholder="Escribe para buscar...">
+        <input name="q" value="{{ search or '' }}" class="form-control border-start-0 ps-0" placeholder="Escribe para buscar..." aria-label="Buscar preguntas">
       </div>
     </div>
     <div class="col-md-3">
@@ -156,7 +156,7 @@
       <div class="d-flex align-items-start gap-3">
         <!-- Selection Checkbox -->
         <div class="pt-1">
-          <input type="checkbox" value="{{ q.id }}" class="form-check-input question-checkbox" onchange="updateSelectedCount()">
+          <input type="checkbox" value="{{ q.id }}" class="form-check-input question-checkbox" onchange="updateSelectedCount()" aria-label="Seleccionar pregunta: {{ q.statement|striptags|truncate(60) }}">
         </div>
 
         <!-- Main Content -->
