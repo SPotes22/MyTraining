@@ -1,21 +1,19 @@
-import os
 import json
-import uuid
 from io import BytesIO
 from werkzeug.utils import secure_filename
-from flask import render_template, request, redirect, url_for, flash, jsonify, send_file, current_app , Blueprint
+from flask import render_template, request, redirect, url_for, flash, jsonify, send_file, Blueprint
 from flask_login import login_required, current_user
 from app.extensions import db, socketio
 from app.models import Learning, LearningModule, Lesson, Block, LearningProgress, BlockAnswer
 from app.blueprints.learning import learning_bp
 from app.services import learning_service
-from app.services import audit
+from app.services import audit, uploads
 from app.services.remediation_service import RemediationService
 from app.services.video_cues import (cue_wait_seconds, learning_video_player, mark_cue_viewed,
                                      normalize_learning_video_cues, sanitize_question_block_config)
 
-ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp', 'gif', 'mp4', 'webm', 'pdf', 'mp3'}
-# El tope de tamaño se aplica globalmente con Config.MAX_CONTENT_LENGTH (MAX_UPLOAD_MB).
+# Subidas: app/services/uploads.py (lista blanca, firma, tope por tipo, nombre aleatorio).
+MEDIA_KINDS = ('image', 'video', 'audio', 'document')
 
 def _can_edit_learning(learning):
     """El autor de la capacitación o un administrador. Las rutas /api/* del editor la exigen:
@@ -34,8 +32,15 @@ def _forbidden():
     return jsonify({'error': 'Acceso no autorizado'}), 403
 
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+def _save_cover():
+    """Guarda la portada si se envió. Devuelve (ruta o None, mensaje de error o None)."""
+    file = request.files.get('portada_file')
+    if not file or not file.filename:
+        return None, None
+    try:
+        return uploads.save(file, ('image',), 'cover'), None
+    except uploads.UploadError as e:
+        return None, str(e)
 
 # ==========================================
 # VISTAS INSTRUCTOR
@@ -60,21 +65,13 @@ def create_learning():
 
     nombre = request.form.get('nombre', '').strip()
     descripcion = request.form.get('descripcion', '').strip()
-    portada = None
-
-    if 'portada_file' in request.files:
-        file = request.files['portada_file']
-        if file and allowed_file(file.filename):
-            ext = file.filename.rsplit('.', 1)[1].lower()
-            fname = f"cover_{uuid.uuid4().hex}.{ext}"
-            upload_dir = os.path.join(current_app.root_path, 'static', 'uploads', 'learning')
-            os.makedirs(upload_dir, exist_ok=True)
-            file.save(os.path.join(upload_dir, fname))
-            portada = f"uploads/learning/{fname}"
-
     if not nombre:
         flash('El nombre de la capacitación es obligatorio.', 'warning')
         return redirect(url_for('learning.instructor_dashboard'))
+
+    portada, error = _save_cover()
+    if error:
+        flash(f'Portada no guardada: {error}', 'warning')
 
     learning = learning_service.create_default_learning(
         autor_id=current_user.id,
@@ -97,15 +94,11 @@ def edit_learning(learning_id):
     learning.nombre = (request.form.get('nombre', learning.nombre) or '').strip()
     learning.descripcion = (request.form.get('descripcion', learning.descripcion) or '').strip()
 
-    if 'portada_file' in request.files:
-        file = request.files['portada_file']
-        if file and allowed_file(file.filename):
-            ext = file.filename.rsplit('.', 1)[1].lower()
-            fname = f"cover_{uuid.uuid4().hex}.{ext}"
-            upload_dir = os.path.join(current_app.root_path, 'static', 'uploads', 'learning')
-            os.makedirs(upload_dir, exist_ok=True)
-            file.save(os.path.join(upload_dir, fname))
-            learning.portada = f"uploads/learning/{fname}"
+    portada, error = _save_cover()
+    if error:
+        flash(f'Portada no guardada: {error}', 'warning')
+    elif portada:
+        learning.portada = portada
 
     db.session.commit()
     flash('Información general actualizada.', 'success')
@@ -186,6 +179,7 @@ def import_learning():
     file = request.files['json_file']
     if file and file.filename.endswith('.json'):
         try:
+            uploads.check_import_size(file)
             content = json.load(file)
             imported = learning_service.import_learning_json(content, current_user.id)
             flash(f'Capacitación "{imported.nombre}" importada con éxito.', 'success')
@@ -471,17 +465,11 @@ def api_upload_media():
         return jsonify({'error': 'No file uploaded'}), 400
 
     file = request.files['file']
-    if file and allowed_file(file.filename):
-        ext = file.filename.rsplit('.', 1)[1].lower()
-        fname = f"media_{uuid.uuid4().hex}.{ext}"
-        upload_dir = os.path.join(current_app.root_path, 'static', 'uploads', 'learning')
-        os.makedirs(upload_dir, exist_ok=True)
-        file.save(os.path.join(upload_dir, fname))
-
-        url = url_for('static', filename=f"uploads/learning/{fname}")
-        return jsonify({'success': True, 'url': url, 'filename': file.filename})
-
-    return jsonify({'error': 'Tipo de archivo no permitido. Tipos válidos: jpg, png, webp, gif, mp4, webm, pdf, mp3'}), 400
+    try:
+        path = uploads.save(file, MEDIA_KINDS, 'media')
+    except uploads.UploadError as e:
+        return jsonify({'error': str(e)}), e.status
+    return jsonify({'success': True, 'url': url_for('static', filename=path), 'filename': file.filename})
 
 
 # ==========================================

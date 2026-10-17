@@ -96,7 +96,16 @@ class Config:
     WTF_CSRF_TIME_LIMIT = None
 
     # Límites de la plataforma (ver docs/AUDITORIA_PREPRODUCCION.md §4)
-    MAX_CONTENT_LENGTH = _env_int('MAX_UPLOAD_MB', 50) * 1024 * 1024
+    # RNF-07: tope por tipo de archivo (app/services/uploads.py) y tope por petición,
+    # que debe cubrir el mayor (video) más el resto del formulario.
+    UPLOAD_LIMITS_MB = {
+        'image': _env_int('UPLOAD_IMAGE_MB', 10),
+        'video': _env_int('UPLOAD_VIDEO_MB', 200),
+        'audio': _env_int('UPLOAD_AUDIO_MB', 20),
+        'document': _env_int('UPLOAD_DOCUMENT_MB', 20),
+        'import': _env_int('UPLOAD_IMPORT_MB', 5),
+    }
+    MAX_CONTENT_LENGTH = _env_int('MAX_UPLOAD_MB', max(UPLOAD_LIMITS_MB.values()) + 1) * 1024 * 1024
     MIN_PASSWORD_LENGTH = _env_int('MIN_PASSWORD_LENGTH', 8)
     # RNF-17: nivel y formato de los logs de la app (ver app/logging_setup.py).
     LOG_LEVEL = os.environ.get('LOG_LEVEL', 'info').strip().lower()

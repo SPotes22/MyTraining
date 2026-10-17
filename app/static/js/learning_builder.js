@@ -623,7 +623,9 @@ function uploadMediaFile(inputEl, targetInputId) {
         } else {
             alert('Error al subir archivo: ' + (data.error || 'tipo no válido'));
         }
-    });
+    })
+    // Un 413 del proxy (Nginx) llega como HTML, no como JSON.
+    .catch(() => alert('No se pudo subir el archivo. Revisa su tamaño e inténtalo de nuevo.'));
 }
 
 function saveBlockConfigFromModal() {

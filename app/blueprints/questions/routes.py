@@ -5,7 +5,7 @@ from app.extensions import db
 from app.models import Bank, Question, QuestionOption, QuestionMatching, QuestionOrder, Exam, ExamQuestion, StudentAnswer
 from app.blueprints.questions import questions_bp
 from app.services.exam_builder import duplicate_question, save_question_payload, validate_feedback
-from app.services import audit
+from app.services import audit, uploads
 from app.services.video_cues import build_video_metadata
 
 def _safe_next(url):
@@ -200,6 +200,12 @@ def import_questions_excel():
     file = request.files['excel_file']
     if file.filename == '':
         flash('No se seleccionó ningún archivo.', 'danger')
+        return redirect(url_for('questions.mis_preguntas'))
+
+    try:
+        uploads.check_import_size(file)
+    except uploads.UploadError as e:
+        flash(str(e), 'danger')
         return redirect(url_for('questions.mis_preguntas'))
 
     try:
