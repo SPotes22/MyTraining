@@ -5,6 +5,10 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from app.config import Config, validate_config, generate_dev_password
 from flask_wtf.csrf import CSRFError
 from app.extensions import db, login_manager, socketio, csrf
+from app.logging_setup import configure_logging
+import logging
+
+log = logging.getLogger(__name__)
 
 def _add_column_if_missing(conn, table_columns, table_name, column_name, ddl):
     if column_name not in table_columns:
@@ -82,10 +86,11 @@ def init_db():
         superuser.set_password(superuser_pass)
         db.session.add(superuser)
         db.session.commit()
-        print(f"Superusuario '{superuser_name}' ({superuser_email}) creado exitosamente.")
+        log.info('Superusuario creado', extra={'event': 'bootstrap.superuser', 'user_id': superuser.id})
         if generated:
             # Solo ocurre en desarrollo: fuera de él validate_config exige SUPERUSER_PASSWORD.
-            print(f"  Contraseña temporal generada (no se volverá a mostrar): {superuser_pass}")
+            # Va a la consola y no al log a propósito: un log se guarda y se reenvía.
+            print(f"Superusuario {superuser_email} — Contraseña temporal generada (no se volverá a mostrar): {superuser_pass}")
     elif Config.SUPERUSER_RESET_ON_BOOT and superuser_pass:
         # Solo en desarrollo por defecto y solo si hay una clave definida en el entorno:
         # en pre-producción la contraseña no debe revertirse en cada reinicio.
@@ -100,6 +105,7 @@ def init_db():
         teacher = User(username="Profesor Principal", email="profesor@capacitacion.com", role="instructor")
         teacher.set_password(demo_pass)
         if not Config.DEMO_INSTRUCTOR_PASSWORD:
+            # Igual que la del superusuario: solo consola, nunca al log.
             print(f"Profesor demo profesor@capacitacion.com — contraseña temporal: {demo_pass}")
         db.session.add(teacher)
         db.session.commit()
@@ -141,12 +147,13 @@ def init_db():
             ExamQuestion(exam_id=exam.id, question_id=q2.id, points=5.0)
         ])
         db.session.commit()
-        print("Base de datos inicializada correctamente.")
+        log.info('Datos de demostración creados', extra={'event': 'bootstrap.demo'})
 
 
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
+    configure_logging(app.config.get('LOG_LEVEL'), app.config.get('LOG_FORMAT'))
     validate_config(app.config)
 
     if app.config.get('PROXY_FIX_HOPS'):

@@ -13,9 +13,11 @@ def send_mail(to, subject, body):
     cfg = current_app.config
     if not cfg.get('MAIL_SERVER'):
         if cfg.get('APP_ENV') == 'development' or cfg.get('TESTING'):
+            # Solo desarrollo/tests: el cuerpo (con el enlace de restablecimiento) va a la
+            # consola para poder probar sin SMTP; nunca pasa por el log estructurado.
             print(f"[MAIL] (sin MAIL_SERVER, solo consola) Para: {to}\nAsunto: {subject}\n{body}")
             return True
-        log.warning('No se envió el correo "%s": falta configurar MAIL_SERVER.', subject)
+        log.warning('Correo no enviado: falta MAIL_SERVER', extra={'event': 'mail.not_configured'})
         return False
     msg = EmailMessage()
     msg['From'] = cfg.get('MAIL_FROM')
@@ -31,5 +33,5 @@ def send_mail(to, subject, body):
             smtp.send_message(msg)
         return True
     except (smtplib.SMTPException, OSError):
-        log.exception('Error enviando correo "%s"', subject)
+        log.exception('Error enviando correo', extra={'event': 'mail.error'})
         return False

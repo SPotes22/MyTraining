@@ -1,7 +1,10 @@
+import logging
 from app.modes.base import ExamMode
 from app.modes.registry import registry
 from app.realtime import events
 from app.services.exam_content import grade_answer, socket_room
+
+log = logging.getLogger(__name__)
 
 
 @registry.register
@@ -24,7 +27,7 @@ class InstantFeedbackMode(ExamMode):
         student.score += result['points']
         student.current_question = min(student.current_question + 1, len(session.questions))
         next_question = session.questions[student.current_question] if student.current_question < len(session.questions) else None
-        print(f"[ANSWER] {student.id} respondió {question_id}")
+        log.debug('Respuesta en vivo', extra={'event': 'room.answer', 'room': session.room_code, 'user_id': student.id, 'question_id': question_id})
         self.socketio.emit(events.FEEDBACK, {**result, 'next_question': next_question, 'finished': next_question is None}, to=student.sid)
 
     def on_next_question(self, session):

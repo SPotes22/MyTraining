@@ -1,7 +1,10 @@
+import logging
 from app.modes.base import ExamMode
 from app.modes.registry import registry
 from app.realtime import events
 from app.services.exam_content import grade_answer, socket_room
+
+log = logging.getLogger(__name__)
 
 
 @registry.register
@@ -35,7 +38,7 @@ class OpenNavigationMode(ExamMode):
         result = grade_answer(question, answer)
         student.answered_questions[question_id] = {'answer': answer, 'result': result}
         can_submit = len(student.answered_questions) == len(session.questions)
-        print(f"[ANSWER] {student.id} respondió q{question_id} ({len(student.answered_questions)}/{len(session.questions)})")
+        log.debug('Respuesta en vivo', extra={'event': 'room.answer', 'room': session.room_code, 'user_id': student.id, 'question_id': question_id})
 
         # Solo confirmación silenciosa — sin alert, sin feedback de corrección
         self.socketio.emit('answer_saved', {

@@ -20,3 +20,19 @@ keepalive = 5
 accesslog = '-'
 errorlog = '-'
 loglevel = os.environ.get('LOG_LEVEL', 'info')
+
+# RNF-17: access log en JSON (una línea por petición) y error log con el formato de
+# app/logging_setup.py. El logger redacta correos y tokens de /reset-password/ en la URL.
+# No incluye User-Agent ni Referer; la IP sí (seguridad), y se conserva poco (ver manual).
+_dev = os.environ.get('APP_ENV', 'development').strip().lower() == 'development'
+if (os.environ.get('LOG_FORMAT') or ('text' if _dev else 'json')).strip().lower() != 'text':
+    access_log_format = ('{"ts": "%(t)s", "level": "INFO", "logger": "gunicorn.access", "ip": "%(h)s", '
+                         '"method": "%(m)s", "path": "%(U)s", "status": %(s)s, "bytes": "%(B)s", "ms": %(M)s}')
+
+
+def _logger_class():
+    from app.logging_setup import gunicorn_logger_class
+    return gunicorn_logger_class()
+
+
+logger_class = _logger_class

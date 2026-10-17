@@ -1,3 +1,4 @@
+import logging
 from flask import request
 from flask_login import current_user
 from flask_socketio import emit, join_room
@@ -7,6 +8,8 @@ from app.modes import registry
 from app.realtime import events
 from app.realtime.manager import session_manager
 from app.services.exam_content import normalize_room_code, socket_room
+
+log = logging.getLogger(__name__)
 
 
 def _owns_db_session(db_session):
@@ -49,7 +52,7 @@ def _emit_teacher_stats_update(session=None, instructor_id=None):
             socketio.emit('teacher_live_stats_updated', summary,
                           to=f"teacher_{instructor_id}")
     except Exception as e:
-        print(f"[ERROR] stats del profesor: {e}")
+        log.exception('Error actualizando stats del profesor', extra={'event': 'room.stats_error'})
 
 
 # ── Instructor: suscribirse a stats ─────────────────────────────────────────
@@ -82,7 +85,7 @@ def handle_teacher_join(data):
     join_room(socket_room(room_code))
     if current_user.is_authenticated and current_user.role in ['instructor', 'superuser', 'admin']:
         join_room(f"teacher_{current_user.id}")
-    print(f"[JOIN] Profesor -> {room_code}")
+    log.info('Profesor entra a sala', extra={'event': 'room.teacher_join', 'room': room_code, 'user_id': getattr(current_user, 'id', None)})
     _emit_students(session)
 
 
@@ -107,7 +110,7 @@ def handle_student_join(data):
         return
     session, student = result
     join_room(socket_room(room_code))
-    print(f"[JOIN] Alumno {student.id} -> {room_code}")
+    log.info('Estudiante entra a sala', extra={'event': 'room.student_join', 'room': room_code, 'user_id': student.id})
     _emit_students(session)
 
     # Restaurar respuestas guardadas (LiveAnswer) para que la UI las precargue
@@ -140,7 +143,7 @@ def handle_start_exam_session(data):
     db.session.commit()
     session = session_manager.get_or_create_by_db_session(db_session)
     session.status = 'in_progress'
-    print(f"[START] Profesor inició {session.room_code}")
+    log.info('Examen iniciado', extra={'event': 'room.start', 'room': session.room_code})
     _mode(session).on_start(session)
     _emit_teacher_stats_update(session)
 
@@ -163,7 +166,7 @@ def handle_pause_exam(data):
         db_session.status = 'PAUSED'
         db.session.commit()
     socketio.emit('exam_paused', {'room_code': room_code}, to=socket_room(room_code))
-    print(f"[PAUSE] {room_code}")
+    log.info('Examen en pausa', extra={'event': 'room.pause', 'room': room_code})
 
 
 @socketio.on('resume_exam')
@@ -183,7 +186,7 @@ def handle_resume_exam(data):
         db_session.status = 'in_progress'
         db.session.commit()
     socketio.emit('exam_resumed', {'room_code': room_code}, to=socket_room(room_code))
-    print(f"[RESUME] {room_code}")
+    log.info('Examen reanudado', extra={'event': 'room.resume', 'room': room_code})
 
 
 # ── Answer submitted ─────────────────────────────────────────────────────────
@@ -233,7 +236,7 @@ def handle_answer_submitted(data):
             db.session.commit()
     except Exception as e:
         db.session.rollback()
-        print(f"[WARN] LiveAnswer upsert: {e}")
+        log.exception('No se guardó la respuesta en vivo', extra={'event': 'room.live_answer_error', 'room': room_code})
 
     # ── Notificar al instructor que este alumno respondió esta pregunta ───────
     _mode(session).on_answer(session, student, question_id, answer)
@@ -249,7 +252,7 @@ def handle_answer_submitted(data):
                 'answered_count': len(student.answered_questions),
             }, to=f"teacher_{db_session.exam.instructor_id}")
     except Exception as e:
-        print(f"[WARN] student_answered emit: {e}")
+        log.exception('No se notificó la respuesta al profesor', extra={'event': 'room.notify_error', 'room': room_code})
     
     _emit_students(session)
     
@@ -277,7 +280,7 @@ def handle_anti_cheat_alert(data):
         return
     username = current_user.username
     reason = str(data.get('reason') or '')[:200]
-    print(f"[ALERT] {username} -> {room_code}: {reason}")
+    log.warning('Alerta antitrampa', extra={'event': 'room.anti_cheat', 'room': room_code, 'user_id': current_user.id, 'reason': reason})
     # Solo al profesor: antes se difundía a toda la sala (los compañeros veían la alerta).
     db_session = DbExamSession.query.filter_by(session_code=room_code).first()
     target = session.teacher_sid or (f"teacher_{db_session.exam.instructor_id}" if db_session else None)
@@ -293,7 +296,7 @@ def handle_disconnect():
         return
     session, role, student_id = info
     if role == 'student':
-        print(f"[LEAVE] Alumno {student_id} <- {session.room_code}")
+        log.info('Estudiante sale de sala', extra={'event': 'room.student_leave', 'room': session.room_code, 'user_id': student_id})
         _emit_students(session)
     else:
-        print(f"[LEAVE] Profesor <- {session.room_code}")
+        log.info('Profesor sale de sala', extra={'event': 'room.teacher_leave', 'room': session.room_code})

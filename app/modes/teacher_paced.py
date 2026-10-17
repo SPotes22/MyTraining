@@ -1,7 +1,10 @@
+import logging
 from app.modes.base import ExamMode
 from app.modes.registry import registry
 from app.realtime import events
 from app.services.exam_content import grade_answer, socket_room
+
+log = logging.getLogger(__name__)
 
 
 @registry.register
@@ -42,7 +45,7 @@ class TeacherPacedMode(ExamMode):
         result = grade_answer(current, answer)
         student.answered_questions[question_id] = {'answer': answer, 'result': result}
         student.score += result['points']
-        print(f"[ANSWER] {student.id} respondió q{question_id}")
+        log.debug('Respuesta en vivo', extra={'event': 'room.answer', 'room': session.room_code, 'user_id': student.id, 'question_id': question_id})
 
         # Confirmación silenciosa al estudiante
         self.socketio.emit('answer_saved', {
@@ -60,7 +63,7 @@ class TeacherPacedMode(ExamMode):
 
     def on_next_question(self, session):
         session.current_question += 1
-        print(f"[NEXT] Profesor avanzó a pregunta {session.current_question}")
+        log.info('Siguiente pregunta', extra={'event': 'room.next_question', 'room': session.room_code, 'question_index': session.current_question})
         self.socketio.emit(events.NEXT_QUESTION, {
             'question': self._current(session),
             'current_question': session.current_question,

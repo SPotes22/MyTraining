@@ -98,6 +98,9 @@ class Config:
     # Límites de la plataforma (ver docs/AUDITORIA_PREPRODUCCION.md §4)
     MAX_CONTENT_LENGTH = _env_int('MAX_UPLOAD_MB', 50) * 1024 * 1024
     MIN_PASSWORD_LENGTH = _env_int('MIN_PASSWORD_LENGTH', 8)
+    # RNF-17: nivel y formato de los logs de la app (ver app/logging_setup.py).
+    LOG_LEVEL = os.environ.get('LOG_LEVEL', 'info').strip().lower()
+    LOG_FORMAT = (os.environ.get('LOG_FORMAT') or ('text' if APP_ENV == 'development' else 'json')).strip().lower()
     LOGIN_MAX_ATTEMPTS = _env_int('LOGIN_MAX_ATTEMPTS', 5)
     LOGIN_LOCKOUT_SECONDS = _env_int('LOGIN_LOCKOUT_SECONDS', 15 * 60)
 
