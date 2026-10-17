@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% block title %}Mi perfil | MyTraining{% endblock %}
+{% block content %}
+<div class="row justify-content-center py-4">
+  <div class="col-lg-8">
+    <h2 class="fw-bold mb-1"><i class="bi bi-person-gear text-primary me-2"></i>Mi perfil y mis datos</h2>
+    <p class="text-muted mb-4">Aquí puedes consultar, corregir, descargar o eliminar los datos personales que la plataforma guarda sobre ti.</p>
+
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-body p-4">
+        <h5 class="fw-bold mb-3">Mis datos</h5>
+        <form method="post" action="{{ url_for('auth.profile') }}" class="row g-3">
+          <div class="col-md-6"><label class="form-label small fw-semibold" for="first_name">Nombre</label>
+            <input id="first_name" name="first_name" class="form-control" value="{{ current_user.first_name or '' }}"></div>
+          <div class="col-md-6"><label class="form-label small fw-semibold" for="last_name">Apellido</label>
+            <input id="last_name" name="last_name" class="form-control" value="{{ current_user.last_name or '' }}"></div>
+          <div class="col-md-6"><label class="form-label small fw-semibold" for="email">Correo</label>
+            <input id="email" name="email" type="email" class="form-control" value="{{ current_user.email or '' }}"></div>
+          <div class="col-md-6"><label class="form-label small fw-semibold" for="phone">Teléfono (opcional)</label>
+            <input id="phone" name="phone" class="form-control" value="{{ current_user.phone or '' }}"></div>
+          <div class="col-12"><label class="form-label small fw-semibold" for="institution">Institución (opcional)</label>
+            <input id="institution" name="institution" class="form-control" value="{{ current_user.institution or '' }}"></div>
+          <div class="col-12 d-flex justify-content-between align-items-center">
+            <span class="small text-muted">Rol: <strong>{{ current_user.role }}</strong></span>
+            <button class="btn btn-primary">Guardar cambios</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    {% if current_user.password_hash %}
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-body p-4">
+        <h5 class="fw-bold mb-3">Cambiar contraseña</h5>
+        <form method="post" action="{{ url_for('auth.change_password') }}" class="row g-3">
+          <div class="col-md-4"><label class="form-label small fw-semibold" for="cp_current">Contraseña actual</label>
+            <input id="cp_current" name="current_password" type="password" class="form-control" required></div>
+          <div class="col-md-4"><label class="form-label small fw-semibold" for="cp_new">Nueva</label>
+            <input id="cp_new" name="password" type="password" minlength="{{ config.MIN_PASSWORD_LENGTH }}" class="form-control" required></div>
+          <div class="col-md-4"><label class="form-label small fw-semibold" for="cp_confirm">Repite la nueva</label>
+            <input id="cp_confirm" name="password_confirm" type="password" minlength="{{ config.MIN_PASSWORD_LENGTH }}" class="form-control" required></div>
+          <div class="col-12 text-end"><button class="btn btn-outline-primary">Cambiar contraseña</button></div>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-body p-4 d-flex flex-wrap justify-content-between align-items-center gap-3">
+        <div>
+          <h5 class="fw-bold mb-1">Descargar mis datos</h5>
+          <p class="text-muted small mb-0">Un archivo JSON con tu perfil, tus intentos de examen y respuestas, tu progreso en capacitaciones y tus votos en encuestas.</p>
+        </div>
+        <a class="btn btn-outline-secondary" href="{{ url_for('auth.export_my_data') }}"><i class="bi bi-download me-1"></i>Descargar</a>
+      </div>
+    </div>
+
+    <div class="card border-danger-subtle shadow-sm">
+      <div class="card-body p-4">
+        <h5 class="fw-bold text-danger mb-1">Eliminar mi cuenta</h5>
+        {% if owns_content or current_user.role in ['superuser', 'admin'] %}
+          <p class="small mb-0">Tu cuenta tiene exámenes, bancos o capacitaciones, o permisos de administración. Para eliminarla escribe al responsable de la plataforma: un administrador gestionará la supresión sin dejar a tus estudiantes sin su historial.</p>
+        {% else %}
+          <p class="small text-muted">Se borran tu nombre, correo, teléfono, institución y contraseña, y ya no podrás entrar. Tus respuestas en exámenes se conservan <strong>sin identificarte</strong>, para que el profesor no pierda las estadísticas de su grupo. No se puede deshacer.</p>
+          <form method="post" action="{{ url_for('auth.delete_my_account') }}" class="row g-2 align-items-end">
+            {% if current_user.password_hash %}
+            <div class="col-md-5"><label class="form-label small fw-semibold" for="del_pw">Contraseña actual</label>
+              <input id="del_pw" name="current_password" type="password" class="form-control" required></div>
+            {% endif %}
+            <div class="col-md-4"><label class="form-label small fw-semibold" for="del_confirm">Escribe ELIMINAR</label>
+              <input id="del_confirm" name="confirm" class="form-control" autocomplete="off" required></div>
+            <div class="col-md-3"><button class="btn btn-danger w-100">Eliminar mi cuenta</button></div>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

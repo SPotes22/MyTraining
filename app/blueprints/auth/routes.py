@@ -1,10 +1,11 @@
 import threading
 import time
 from datetime import datetime
-from flask import render_template, request, redirect, url_for, flash, current_app
+import json
+from flask import render_template, request, redirect, url_for, flash, current_app, Response
 from flask_login import login_user, logout_user, login_required, current_user
 from app.extensions import db
-from app.services import audit, password_reset
+from app.services import audit, password_reset, personal_data
 from app.services.mailer import send_mail
 from app.models import User, ExamSession, Bank
 from app.blueprints.auth import auth_bp
@@ -228,6 +229,92 @@ def reset_password(token):
             flash('Contraseña actualizada. Ya puedes iniciar sesión.', 'success')
             return redirect(url_for('auth.login'))
     return render_template('reset_password.html', token=token)
+
+
+# ── RF-029: derechos del titular ─────────────────────────────────────────────
+@auth_bp.route('/perfil', methods=['GET', 'POST'])
+@login_required
+def profile():
+    """Consultar y corregir los propios datos personales."""
+    if request.method == 'POST':
+        first_name = request.form.get('first_name', '').strip()
+        last_name = request.form.get('last_name', '').strip()
+        email = request.form.get('email', '').strip().lower()
+        if current_user.email and not email:
+            flash('El correo es obligatorio para las cuentas con contraseña.', 'warning')
+            return redirect(url_for('auth.profile'))
+        if email and ('@' not in email or '.' not in email):
+            flash('Por favor ingresa un correo electrónico válido.', 'warning')
+            return redirect(url_for('auth.profile'))
+        if email and email != current_user.email and User.query.filter_by(email=email).first():
+            flash('Ya existe otra cuenta con ese correo.', 'danger')
+            return redirect(url_for('auth.profile'))
+        current_user.first_name = first_name or None
+        current_user.last_name = last_name or None
+        current_user.phone = request.form.get('phone', '').strip() or None
+        current_user.institution = request.form.get('institution', '').strip() or None
+        if email:
+            current_user.email = email
+        full_name = f"{first_name} {last_name}".strip()
+        if full_name:
+            current_user.username = full_name
+        audit.record('user.update_profile', 'user', current_user.id)
+        db.session.commit()
+        flash('Tus datos se actualizaron.', 'success')
+        return redirect(url_for('auth.profile'))
+    return render_template('profile.html', owns_content=personal_data.owns_content(current_user))
+
+
+@auth_bp.route('/perfil/contrasena', methods=['POST'])
+@login_required
+def change_password():
+    if not current_user.password_hash or not current_user.check_password(request.form.get('current_password', '')):
+        flash('La contraseña actual no es correcta.', 'danger')
+        return redirect(url_for('auth.profile'))
+    password = request.form.get('password', '')
+    min_len = current_app.config.get('MIN_PASSWORD_LENGTH', 8)
+    if len(password) < min_len:
+        flash(f'La contraseña debe tener al menos {min_len} caracteres.', 'warning')
+    elif password != request.form.get('password_confirm', ''):
+        flash('Las contraseñas no coinciden.', 'warning')
+    else:
+        current_user.set_password(password)
+        audit.record('auth.password_change', 'user', current_user.id)
+        db.session.commit()
+        flash('Contraseña actualizada.', 'success')
+    return redirect(url_for('auth.profile'))
+
+
+@auth_bp.route('/perfil/exportar')
+@login_required
+def export_my_data():
+    data = personal_data.export_user_data(current_user)
+    audit.record('user.export', 'user', current_user.id, commit=True)
+    return Response(json.dumps(data, ensure_ascii=False, indent=2), mimetype='application/json',
+                    headers={'Content-Disposition': f'attachment; filename=mis_datos_mytraining_{current_user.id}.json'})
+
+
+@auth_bp.route('/perfil/eliminar', methods=['POST'])
+@login_required
+def delete_my_account():
+    """Supresión (anonimización) de la cuenta a pedido del titular."""
+    if request.form.get('confirm', '').strip().upper() != 'ELIMINAR':
+        flash('Para eliminar tu cuenta escribe ELIMINAR en la casilla de confirmación.', 'warning')
+        return redirect(url_for('auth.profile'))
+    if current_user.password_hash and not current_user.check_password(request.form.get('current_password', '')):
+        flash('La contraseña actual no es correcta.', 'danger')
+        return redirect(url_for('auth.profile'))
+    if current_user.role in ['superuser', 'admin'] or personal_data.owns_content(current_user):
+        flash('Tu cuenta tiene contenido o permisos de administración: un administrador debe gestionar su supresión. '
+              'Escríbele al responsable de la plataforma.', 'warning')
+        return redirect(url_for('auth.profile'))
+    user = current_user._get_current_object()
+    audit.record('user.anonymize', 'user', user.id, role=user.role)
+    personal_data.anonymize_user(user)
+    db.session.commit()
+    logout_user()
+    flash('Tu cuenta fue eliminada y tus datos personales se borraron. Tus respuestas se conservan sin identificarte.', 'info')
+    return redirect(url_for('auth.home'))
 
 
 @auth_bp.route('/logout')
