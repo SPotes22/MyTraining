@@ -9,6 +9,7 @@ from app.extensions import db, socketio
 from app.models import Learning, LearningModule, Lesson, Block, LearningProgress, BlockAnswer
 from app.blueprints.learning import learning_bp
 from app.services import learning_service
+from app.services import audit
 from app.services.remediation_service import RemediationService
 from app.services.video_cues import (cue_wait_seconds, learning_video_player, mark_cue_viewed,
                                      normalize_learning_video_cues, sanitize_question_block_config)
@@ -115,6 +116,7 @@ def delete_learning(learning_id):
         return redirect(url_for('learning.instructor_dashboard'))
 
     db.session.delete(learning)
+    audit.record('learning.delete', 'learning', learning.id, name=learning.nombre)
     db.session.commit()
     flash('Capacitación eliminada.', 'success')
     return redirect(url_for('learning.instructor_dashboard'))
@@ -140,6 +142,7 @@ def toggle_publish(learning_id):
         return jsonify({'error': 'Acceso no autorizado'}), 403
 
     learning.estado = 'published' if learning.estado == 'draft' else 'draft'
+    audit.record('learning.publish' if learning.estado == 'published' else 'learning.unpublish', 'learning', learning.id, name=learning.nombre)
     db.session.commit()
     return jsonify({'success': True, 'nuevo_estado': learning.estado})
 

@@ -5,6 +5,7 @@ from app.extensions import db
 from app.models import Bank, Question, QuestionOption, QuestionMatching, QuestionOrder, Exam, ExamQuestion, StudentAnswer
 from app.blueprints.questions import questions_bp
 from app.services.exam_builder import duplicate_question, save_question_payload, validate_feedback
+from app.services import audit
 from app.services.video_cues import build_video_metadata
 
 @questions_bp.route('/instructor/bank/create', methods=['POST'])
@@ -48,6 +49,7 @@ def delete_bank(bank_id):
         return redirect(url_for('exams.instructor_dashboard'))
 
     db.session.delete(bank)
+    audit.record('bank.delete', 'bank', bank.id, name=bank.name)
     db.session.commit()
     flash(f'Banco "{bank.name}" eliminado.', 'info')
     return redirect(url_for('exams.instructor_dashboard'))
@@ -123,6 +125,7 @@ def delete_question(question_id):
         return redirect(url_for('questions.mis_preguntas'))
 
     db.session.delete(question)
+    audit.record('question.delete', 'question', question.id)
     db.session.commit()
     flash('Pregunta eliminada.', 'info')
     return redirect(url_for('questions.mis_preguntas'))
@@ -159,6 +162,7 @@ def bulk_delete_questions():
             db.session.delete(q)
             count += 1
 
+    audit.record('question.bulk_delete', 'question', None, deleted=count, blocked=blocked)
     db.session.commit()
     flash(f'Se eliminaron {count} preguntas exitosamente.', 'info')
     if blocked:

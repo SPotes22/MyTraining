@@ -457,3 +457,23 @@ class PollVote(db.Model):
         db.UniqueConstraint('poll_id', 'student_id', name='uq_poll_student'),
     )
 
+
+
+# ==========================================
+# AUDITORÍA (RF-030)
+# ==========================================
+
+class AuditLog(db.Model):
+    """Quién hizo qué y cuándo. Sin FK a users para que el registro sobreviva al borrado
+    o anonimización del usuario; tampoco guarda su correo ni su nombre (minimización):
+    la vista de administración los resuelve con el user_id al momento de consultar."""
+    __tablename__ = 'audit_logs'
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    user_id = db.Column(db.Integer, nullable=True, index=True)
+    user_role = db.Column(db.String(20), nullable=True)
+    action = db.Column(db.String(50), nullable=False, index=True)
+    entity = db.Column(db.String(50), nullable=True)
+    entity_id = db.Column(db.Integer, nullable=True)
+    details = db.Column(db.JSON, nullable=True)
+    ip = db.Column(db.String(45), nullable=True)

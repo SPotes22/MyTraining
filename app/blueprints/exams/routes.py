@@ -9,6 +9,7 @@ from app.realtime import events
 from app.realtime.manager import session_manager
 from app.modes import registry
 from app.services.exam_content import normalize_room_code, create_session_question_snapshots
+from app.services import audit
 from app.services.video_cues import cue_wait_seconds, mark_cue_viewed
 from app.models import (
     User, Bank, Question, QuestionOption, Exam, ExamQuestion, 
@@ -603,6 +604,7 @@ def close_session(session_id):
         return 'Acceso denegado', 403
     if current_user.role == 'instructor':
         session_obj.status = 'finished'
+        audit.record('session.finish', 'session', session_obj.id, code=session_obj.session_code)
         db.session.commit()
         maybe_generate_remediation(session_obj)
 
@@ -859,6 +861,7 @@ def download_session_results_excel(session_id):
     session_obj = ExamSession.query.get_or_404(session_id)
     if session_obj.exam.instructor_id != current_user.id:
         return 'Acceso denegado', 403
+    audit.record('results.export', 'session', session_obj.id, commit=True, code=session_obj.session_code)
     return send_rows_as_excel(build_session_results_rows(session_id), f'resultados_{session_obj.session_code}.xlsx')
 
 @exams_bp.route('/instructor/attempt/<int:attempt_id>/results.xlsx')
@@ -869,6 +872,7 @@ def download_attempt_results_excel(attempt_id):
     attempt = ExamAttempt.query.get_or_404(attempt_id)
     if attempt.session.exam.instructor_id != current_user.id:
         return 'Acceso denegado', 403
+    audit.record('results.export', 'attempt', attempt.id, commit=True)
     rows = [row for row in build_session_results_rows(attempt.session_id) if row['Estudiante'] == attempt.student.username]
     return send_rows_as_excel(rows, f'resultado_{attempt.student.username}_{attempt.session.session_code}.xlsx')
 
@@ -941,6 +945,8 @@ def new_exam_builder():
             return redirect(url_for('exams.new_exam_builder'))
         exam = Exam(title=title, instructor_id=current_user.id, duration_minutes=request.form.get('duration', type=int, default=30))
         db.session.add(exam)
+        db.session.flush()
+        audit.record('exam.create', 'exam', exam.id, title=title)
         db.session.commit()
         return redirect(url_for('exams.edit_exam_builder', exam_id=exam.id))
     return render_template('exam_builder.html', exam=None, banks=Bank.query.filter_by(created_by=current_user.id).all(), all_questions=[])
@@ -966,6 +972,7 @@ def edit_exam_builder(exam_id):
         exam.max_attempts = max(request.form.get('max_attempts', type=int, default=1), 1)
         for eq in exam.questions:
             eq.points = max(request.form.get(f'points_{eq.question_id}', type=float, default=eq.points), 0.1)
+        audit.record('exam.update', 'exam', exam.id, title=exam.title)
         db.session.commit()
         flash('Cambios del examen guardados.', 'success')
         return redirect(url_for('exams.edit_exam_builder', exam_id=exam.id))
@@ -1057,6 +1064,7 @@ def duplicate_exam(exam_id):
     db.session.add(copy); db.session.flush()
     for eq in exam.questions:
         db.session.add(ExamQuestion(exam_id=copy.id, question_id=eq.question_id, points=eq.points, order_index=eq.order_index))
+    audit.record('exam.duplicate', 'exam', exam.id, title=exam.title, copy_id=copy.id)
     db.session.commit()
     flash('Examen duplicado.', 'success')
     return redirect(url_for('exams.library'))
@@ -1068,6 +1076,7 @@ def delete_exam(exam_id):
     if current_user.role != 'instructor' or exam.instructor_id != current_user.id:
         return 'Acceso denegado', 403
     exam.active = False
+    audit.record('exam.archive', 'exam', exam.id, title=exam.title)
     db.session.commit()
     flash(f'Examen "{exam.title}" desactivado y movido a Eliminados.', 'info')
     return redirect(url_for('exams.library'))
@@ -1079,6 +1088,7 @@ def restore_exam(exam_id):
     if current_user.role != 'instructor' or exam.instructor_id != current_user.id:
         return 'Acceso denegado', 403
     exam.active = True
+    audit.record('exam.restore', 'exam', exam.id, title=exam.title)
     db.session.commit()
     flash(f'Examen "{exam.title}" restaurado y activado correctamente.', 'success')
     return redirect(url_for('exams.library', tab='deleted'))
@@ -1096,6 +1106,7 @@ def delete_exam_permanent(exam_id):
         return redirect(url_for('exams.library', tab='deleted'))
     title = exam.title
     db.session.delete(exam)
+    audit.record('exam.delete', 'exam', exam_id, title=title)
     db.session.commit()
     flash(f'Examen "{title}" eliminado definitivamente.', 'warning')
     return redirect(url_for('exams.library', tab='deleted'))
@@ -1122,6 +1133,7 @@ def control_session(session_id, action):
     if current_user.role != 'instructor' or session.exam.instructor_id != current_user.id or action not in allowed:
         return 'Acceso denegado', 403
     session.status = allowed[action]
+    audit.record(f'session.{action}', 'session', session.id, code=session.session_code)
     db.session.commit()
     if action == 'finish':
         maybe_generate_remediation(session)

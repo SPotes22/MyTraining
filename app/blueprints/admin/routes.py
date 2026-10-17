@@ -2,7 +2,8 @@ from functools import wraps
 from flask import render_template, request, redirect, url_for, flash, current_app
 from flask_login import login_required, current_user
 from app.extensions import db
-from app.models import User, Exam, ExamSession, Bank, ExamClass, ExamGroup, Learning
+from app.services import audit
+from app.models import User, Exam, ExamSession, Bank, ExamClass, ExamGroup, Learning, AuditLog
 from app.blueprints.admin import admin_bp
 
 def admin_required(f):
@@ -55,6 +56,8 @@ def create_instructor():
     instructor = User(username=username, email=email, role='instructor')
     instructor.set_password(password)
     db.session.add(instructor)
+    db.session.flush()
+    audit.record('user.create', 'user', instructor.id, role='instructor')
     db.session.commit()
 
     flash(f'Cuenta de profesor "{username}" ({email}) creada exitosamente.', 'success')
@@ -82,6 +85,32 @@ def delete_instructor(user_id):
         return redirect(url_for('admin.dashboard'))
 
     db.session.delete(user)
+    audit.record('user.delete', 'user', user.id, role=user.role)
     db.session.commit()
     flash(f'Cuenta del profesor "{user.username}" eliminada correctamente.', 'success')
     return redirect(url_for('admin.dashboard'))
+
+
+AUDIT_PAGE_SIZE = 100
+
+
+@admin_bp.route('/audit')
+@login_required
+@admin_required
+def audit_log():
+    """RF-030: consulta del registro de auditoría, del más reciente al más antiguo."""
+    action = request.args.get('action', '').strip()
+    user_id = request.args.get('user_id', type=int)
+    page = max(request.args.get('page', type=int, default=1), 1)
+    query = AuditLog.query
+    if action:
+        query = query.filter(AuditLog.action.like(f'{action}%'))
+    if user_id:
+        query = query.filter_by(user_id=user_id)
+    total = query.count()
+    logs = (query.order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+            .offset((page - 1) * AUDIT_PAGE_SIZE).limit(AUDIT_PAGE_SIZE).all())
+    users = {u.id: u for u in User.query.filter(User.id.in_({l.user_id for l in logs if l.user_id})).all()}
+    actions = sorted({a for (a,) in db.session.query(AuditLog.action).distinct()})
+    return render_template('admin_audit.html', logs=logs, users=users, actions=actions, action=action,
+                           user_id=user_id, page=page, total=total, page_size=AUDIT_PAGE_SIZE)
