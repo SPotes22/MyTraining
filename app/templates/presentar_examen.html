@@ -92,115 +92,49 @@
         {% for item in questions_data %}
         {% set q = item.question %}
         {% set qi = loop.index0 %}
+        {% set cue = q.video_cue %}
+        {% set gated = cue and cue.has_cue %}
         <div class="question-step" id="step-{{ qi }}"
              data-question-id="{{ q.id }}"
              data-question-type="{{ item.type }}"
+             {% if gated %}data-video-gated="1" data-cue-key="exam-{{ session.id }}-{{ current_user.id }}-{{ q.id }}"{% endif %}
              style="{% if qi != 0 %}display:none;{% endif %}">
 
           <div class="mb-4">
             <span class="badge bg-secondary mb-2">Pregunta {{ loop.index }}</span>
             <span id="savedMark-{{ q.id }}" class="badge bg-success ms-1 d-none">✓ Guardada</span>
-            <h4 class="fw-normal mt-1">{{ q.statement }}</h4>
-            {% if q.image_url %}
-              <img src="{{ q.image_url }}" class="img-fluid rounded mb-3" style="max-height:250px;">
+            {% if gated %}
+              <div class="video-cue-waiting alert alert-primary d-flex align-items-center gap-2 mt-2 mb-3" role="status">
+                <i class="bi bi-play-circle-fill fs-4"></i>
+                <div>Reproduce el video: la pregunta aparecerá en el minuto <strong>{{ cue.question_at_label }}</strong>.</div>
+              </div>
             {% endif %}
-            {% if q.video_url %}
-              {% set yt_url = q.video_url %}
-              {% if 'youtu.be/' in yt_url %}
-                {% set yt_id = yt_url.split('youtu.be/')[-1].split('?')[0] %}
-                {% set embed_url = 'https://www.youtube.com/embed/' + yt_id %}
-              {% elif 'youtube.com/watch' in yt_url %}
-                {% set yt_id = yt_url.split('v=')[-1].split('&')[0] %}
-                {% set embed_url = 'https://www.youtube.com/embed/' + yt_id %}
-              {% elif 'youtube.com/embed/' in yt_url %}
-                {% set embed_url = yt_url %}
-              {% else %}
-                {% set embed_url = yt_url %}
-              {% endif %}
-              <div class="ratio ratio-16x9 mb-3 rounded overflow-hidden shadow-sm" style="max-width: 560px;">
-                <iframe src="{{ embed_url }}{% if q.video_timestamp %}?start={{ q.video_timestamp }}{% endif %}"
-                        allowfullscreen
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        loading="lazy"></iframe>
+            {% if not gated %}
+              {% with part='statement' %}{% include '_exam_question_body.html' %}{% endwith %}
+            {% endif %}
+            {% if cue %}
+              <div class="ratio ratio-16x9 mb-3 rounded overflow-hidden shadow-sm video-cue-player"
+                   style="max-width: 560px;"
+                   {% if gated %}data-video-cue='{{ dict(cue, cues=[{'at': cue.question_at, 'pause': cue.pause_on_question, 'target': '#step-' ~ qi}])|tojson }}'{% endif %}>
+                {% if cue.provider == 'file' %}
+                  <video controls preload="metadata" playsinline src="{{ video_embed_src(cue) }}"></video>
+                {% elif gated and cue.provider == 'youtube' %}
+                  <div class="video-cue-yt"></div>
+                {% else %}
+                  <iframe src="{{ video_embed_src(cue) }}"
+                          allowfullscreen
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          loading="lazy"></iframe>
+                {% endif %}
               </div>
             {% endif %}
           </div>
 
-          {# ── Opción múltiple / V-F / Video ── #}
-          {% if item.type in ['multiple_choice', 'true_false', 'video'] %}
-            {% for opt in item.options %}
-            <div class="form-check card mb-2 p-3 border option-card" data-opt-id="{{ opt.id }}">
-              <input class="form-check-input ms-1" type="radio"
-                     name="question_{{ q.id }}" value="{{ opt.id }}" id="opt_{{ opt.id }}"
-                     data-question-id="{{ q.id }}">
-              <label class="form-check-label ms-2 w-100" for="opt_{{ opt.id }}">
-                {{ opt.option_text }}
-              </label>
-            </div>
-            {% endfor %}
-
-          {# ── Selección múltiple ── #}
-          {% elif item.type == 'multiple_select' %}
-            <p class="text-muted small mb-3"><i class="bi bi-info-circle me-1"></i>Puedes seleccionar más de una opción.</p>
-            {% for opt in item.options %}
-            <div class="form-check card mb-2 p-3 border option-card">
-              <input class="form-check-input ms-1" type="checkbox"
-                     name="question_{{ q.id }}" value="{{ opt.id }}" id="opt_{{ opt.id }}"
-                     data-question-id="{{ q.id }}">
-              <label class="form-check-label ms-2 w-100" for="opt_{{ opt.id }}">{{ opt.option_text }}</label>
-            </div>
-            {% endfor %}
-
-          {# ── Emparejamiento ── #}
-          {% elif item.type == 'matching' %}
-            <p class="text-muted small mb-3">Selecciona la coincidencia para cada término.</p>
-            {% for pair in item.pairs %}
-            <div class="row align-items-center mb-3">
-              <div class="col-md-5 fw-semibold">{{ pair.left_text }}</div>
-              <div class="col-md-7">
-                <select name="question_{{ q.id }}_pair_{{ pair.id }}" class="form-select"
-                        data-question-id="{{ q.id }}" data-pair-id="{{ pair.id }}">
-                  <option value="">-- Selecciona --</option>
-                  {% for right in item.right_options %}
-                  <option value="{{ right }}">{{ right }}</option>
-                  {% endfor %}
-                </select>
-              </div>
-            </div>
-            {% endfor %}
-            <input type="hidden" name="question_{{ q.id }}_type" value="matching">
-
-          {# ── Ordenamiento ── #}
-          {% elif item.type == 'ordering' %}
-            <p class="text-muted small mb-3">
-              Asigna el número de orden a cada elemento (1 = primero).
-            </p>
-            {% for ord_item in item.order_list %}
-            <div class="row align-items-center mb-2">
-              <div class="col-md-8">{{ ord_item.item_text }}</div>
-              <div class="col-md-4">
-                <input type="number"
-                       name="order_{{ q.id }}_{{ ord_item.id }}"
-                       class="form-control ordering-input"
-                       data-question-id="{{ q.id }}"
-                       min="1" max="{{ item.order_list|length }}"
-                       placeholder="#">
-              </div>
-            </div>
-            {% endfor %}
-            <input type="hidden" name="question_{{ q.id }}_type" value="ordering">
-
-          {# ── Respuesta abierta ── #}
-          {% elif item.type == 'open_answer' %}
-            <textarea name="question_{{ q.id }}"
-                      class="form-control open-answer-input"
-                      data-question-id="{{ q.id }}"
-                      rows="6"
-                      placeholder="Escribe tu respuesta aquí…"></textarea>
-            <small class="text-muted d-block mt-1">
-              Tu respuesta se guarda automáticamente cuando haces clic en "Siguiente" o "Enviar".
-            </small>
-
+          {% if gated %}
+            {# RF-011: el contenido llega del servidor cuando el video alcanza el cue. #}
+            <div class="video-cue-gate d-none" data-cue-src="{{ url_for('exams.video_cue_question', session_id=session.id, question_id=q.id) }}"></div>
+          {% else %}
+            {% with part='answers' %}{% include '_exam_question_body.html' %}{% endwith %}
           {% endif %}
         </div>
         {% endfor %}
@@ -239,6 +173,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/video_cues.js') }}"></script>
 <script>
 /* ═══════════════════════════════════════════════════════════════════════════
    presentar_examen.js  —  examen + poll + pausa + progreso
@@ -264,6 +199,7 @@ function hideWaiting() {
 }
 function showPause() {
   isPaused = true;
+  window.VideoCues?.pauseAllExcept(null);
   const el = document.getElementById('pause-screen');
   el.classList.remove('d-none');
   el.style.display = 'flex';
@@ -550,6 +486,12 @@ function restoreAnswer(questionId, answer) {
   if (!answer) return;
   const step = document.querySelector(`.question-step[data-question-id="${questionId}"]`);
   if (!step) return;
+  // Si ya la había respondido, la pregunta del video ya apareció antes: se pide al
+  // servidor y se restaura en el evento 'videocue:revealed'.
+  if (step.dataset.videoGated && step.dataset.videoRevealed !== '1') {
+    window.VideoCues?.reveal(step);
+    return;
+  }
   const type = step.dataset.questionType;
 
   if ((type === 'multiple_choice' || type === 'true_false' || type === 'video') && answer.selected_option_id) {
@@ -641,9 +583,11 @@ function updateStepView() {
 
   clampCurrentStep();
 
-  document.querySelectorAll('.question-step').forEach((el, i) => {
+  const stepEls = document.querySelectorAll('.question-step');
+  stepEls.forEach((el, i) => {
     el.style.display = (i === currentStep) ? 'block' : 'none';
   });
+  window.VideoCues?.pauseAllExcept(stepEls[currentStep]);
 
   const isPaced      = EXAM_MODE === 'teacher_paced';
   const isLast       = currentStep === TOTAL_Q - 1;
@@ -731,6 +675,14 @@ hideWaiting();
 // el estudiante marque, sin esperar la confirmación async del servidor.
 document.getElementById('exam-form')?.addEventListener('change', updateStepView);
 document.getElementById('exam-form')?.addEventListener('input', updateStepView);
+
+// RF-011: la pregunta de un video aparece cuando la reproducción llega a su cue.
+document.getElementById('exam-form')?.addEventListener('videocue:revealed', evt => {
+  const qid = evt.target.dataset.questionId;
+  if (savedAnswers[qid]) restoreAnswer(parseInt(qid), savedAnswers[qid]);
+  updateStepView();
+});
+window.VideoCues?.init(document.getElementById('exam-form'));
 
 updateStepView();
 </script>

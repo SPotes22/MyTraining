@@ -21,6 +21,7 @@ def serialize_question(eq, shuffle_options=False):
         'image_url': q.image_url,
         'video_url': q.video_url,
         'video_timestamp': q.video_timestamp,
+        'video_metadata': q.video_cue,
     }
     if q.question_type in ['multiple_choice', 'true_false', 'video']:
         opts = list(q.options)
@@ -135,6 +136,7 @@ def create_session_question_snapshots(session_obj):
             image_url=q.image_url,
             video_url=q.video_url,
             video_timestamp=q.video_timestamp,
+            video_metadata=q.video_metadata,
             options_data=opts_data,
             matching_data=match_data,
             ordering_data=order_data

@@ -10,6 +10,8 @@ from app.models import Learning, LearningModule, Lesson, Block, LearningProgress
 from app.blueprints.learning import learning_bp
 from app.services import learning_service
 from app.services.remediation_service import RemediationService
+from app.services.video_cues import (cue_wait_seconds, learning_video_player, mark_cue_viewed,
+                                     normalize_learning_video_cues, sanitize_question_block_config)
 
 ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp', 'gif', 'mp4', 'webm', 'pdf', 'mp3'}
 # El tope de tamaño se aplica globalmente con Config.MAX_CONTENT_LENGTH (MAX_UPLOAD_MB).
@@ -343,9 +345,14 @@ def api_update_block(block_id):
     if 'configuracion' in request.form:
         try:
             cfg = json.loads(request.form.get('configuracion'))
-            block.configuracion = cfg
         except Exception as e:
             return jsonify({'error': f'JSON no válido: {str(e)}'}), 400
+        if block.tipo == 'video':
+            try:
+                cfg = normalize_learning_video_cues(cfg, block.lesson.blocks)
+            except ValueError as e:
+                return jsonify({'error': str(e)}), 400
+        block.configuracion = cfg
 
     db.session.commit()
     return jsonify({
@@ -461,19 +468,90 @@ def student_view(learning_id):
     }
 
     blocks_map = {
-        les.id: [{
+        les.id: _student_lesson_blocks(les, block_answers)
+        for mod in learning.modules for les in mod.lessons
+    }
+
+    return render_template('learning/student_view.html', learning=learning, progress=progress, block_answers=block_answers, blocks_map=blocks_map)
+
+
+
+def _video_cue_key(block_id):
+    return f'learning:{current_user.id}:{block_id}'
+
+
+def _find_video_cue(question_block):
+    """Cue (con el `start` de su video) que muestra esta pregunta durante la reproducción, o None."""
+    for blk in question_block.lesson.blocks:
+        if blk.tipo != 'video' or not blk.visible:
+            continue
+        player = learning_video_player(blk.configuracion or {}, {question_block.id})
+        if player:
+            return {**player['cues'][0], 'start': player['start']}
+    return None
+
+
+def _student_lesson_blocks(lesson, block_answers):
+    """
+    Bloques de una lección para el estudiante. RF-011: las preguntas que aparecen
+    dentro de un video y aún no se responden viajan sin contenido; el navegador
+    las pide a `api_video_cue_block` cuando el video llega a su minuto.
+    """
+    question_ids = {b.id for b in lesson.blocks if b.tipo == 'question' and b.visible}
+    players, cued = {}, {}
+    for blk in lesson.blocks:
+        if blk.tipo == 'video' and blk.visible:
+            player = learning_video_player(blk.configuracion or {}, question_ids)
+            if player:
+                players[blk.id] = player
+                for cue in player['cues']:
+                    cued.setdefault(cue['question_block_id'], {**cue, 'video_block_id': blk.id})
+
+    result = []
+    for blk in lesson.blocks:
+        data = {
             "id": blk.id,
             "lesson_id": blk.lesson_id,
             "tipo": blk.tipo,
             "orden": blk.orden,
             "visible": blk.visible,
             "configuracion": blk.configuracion or {}
-        } for blk in les.blocks]
-        for mod in learning.modules for les in mod.lessons
-    }
+        }
+        if blk.id in players:
+            data["player"] = players[blk.id]
+        if blk.tipo == 'question':
+            # La calificación se hace en el servidor: el navegador no necesita las respuestas correctas.
+            data["configuracion"] = sanitize_question_block_config(data["configuracion"])
+        cue = cued.get(blk.id)
+        if cue and blk.id not in block_answers:
+            mark_cue_viewed(_video_cue_key(blk.id))
+            data["configuracion"] = {"question_type": data["configuracion"].get("question_type"),
+                                     "points": data["configuracion"].get("points")}
+            data["video_cue"] = {"at": cue['at'], "label": cue['label'], "video_block_id": cue['video_block_id'],
+                                 "src": url_for('learning.api_video_cue_block', block_id=blk.id)}
+        result.append(data)
+    return result
 
-    return render_template('learning/student_view.html', learning=learning, progress=progress, block_answers=block_answers, blocks_map=blocks_map)
 
+@learning_bp.route('/api/block/<int:block_id>/video-question')
+@login_required
+def api_video_cue_block(block_id):
+    """RF-011: entrega una pregunta de video cuando ya pasó su minuto (sin respuestas correctas)."""
+    block = Block.query.get_or_404(block_id)
+    if block.tipo != 'question':
+        return jsonify({'error': 'El bloque no es una pregunta.'}), 400
+    cue = _find_video_cue(block)
+    wait = 0
+    if cue and not BlockAnswer.query.filter_by(user_id=current_user.id, block_id=block.id).first():
+        wait = cue_wait_seconds(_video_cue_key(block.id), cue['start'], cue['at'])
+    if wait > 0:
+        return jsonify({'error': 'Todavía no llega el momento de esta pregunta en el video.',
+                        'retry_after': wait}), 425
+    return jsonify({'block': {
+        'id': block.id,
+        'tipo': block.tipo,
+        'configuracion': sanitize_question_block_config(block.configuracion),
+    }})
 
 
 @learning_bp.route('/api/progress/update', methods=['POST'])

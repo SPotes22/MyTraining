@@ -186,6 +186,13 @@
               <img src="{{ q.image_url }}" alt="Imagen adjunta" class="rounded border" style="max-height: 100px; object-fit: contain;">
             </div>
           {% endif %}
+          {% set cue = q.video_cue %}
+          {% if cue %}
+            <div class="small text-muted mb-2">
+              <i class="bi bi-film me-1 text-primary"></i>Video{% if cue.start %} desde {{ cue.start_label }}{% endif %}
+              {% if cue.has_cue %} · la pregunta aparece en <strong>{{ cue.question_at_label }}</strong>{% if cue.pause_on_question %} (pausa){% endif %}{% endif %}
+            </div>
+          {% endif %}
 
           <!-- Collapsible Preview Button -->
           <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none text-primary fw-semibold" data-bs-toggle="collapse" data-bs-target="#qDetails{{ q.id }}">
@@ -401,10 +408,7 @@
                   <label class="form-label fw-semibold">URL de Imagen</label>
                   <input name="image_url" value="{{ q.image_url or '' }}" class="form-control">
                 </div>
-                <div class="col-md-6">
-                  <label class="form-label fw-semibold">URL de Video</label>
-                  <input name="video_url" value="{{ q.video_url or '' }}" class="form-control">
-                </div>
+                {% with vq=q %}{% include '_video_cue_fields.html' %}{% endwith %}
                 <div class="col-12">
                   <label class="form-label fw-semibold">Retroalimentación</label>
                   <textarea name="feedback_text" maxlength="3000" class="form-control" rows="3" oninput="updateCharCount(this)">{{ q.feedback_text or '' }}</textarea>
@@ -477,7 +481,7 @@
           </div>
           <div class="alert alert-light border small text-muted mb-0">
             <i class="bi bi-info-circle text-primary me-1"></i>
-            El archivo debe incluir las columnas: <code>statement</code>, <code>question_type</code>, <code>options</code> (separadas por |), y <code>correct_option</code>.
+            El archivo debe incluir las columnas: <code>statement</code>, <code>question_type</code>, <code>options</code> (separadas por |), y <code>correct_option</code>. Opcionales para video: <code>video_url</code>, <code>video_start</code> y <code>video_question_at</code> (segundos o mm:ss).
           </div>
         </div>
         <div class="modal-footer bg-light">

@@ -126,10 +126,7 @@
     <label class="form-label fw-semibold"><i class="bi bi-image me-1 text-primary"></i>URL de Imagen (Opcional)</label>
     <input name="image_url" class="form-control" placeholder="https://... o /static/uploads/...">
   </div>
-  <div class="col-md-6">
-    <label class="form-label fw-semibold"><i class="bi bi-film me-1 text-primary"></i>URL de Video (Opcional)</label>
-    <input name="video_url" class="form-control" placeholder="https://youtube.com/...">
-  </div>
+  {% with vq=None %}{% include '_video_cue_fields.html' %}{% endwith %}
 
   <div class="col-12">
     <div class="d-flex justify-content-between align-items-center">

@@ -5,6 +5,7 @@ from app.extensions import db
 from app.models import Bank, Question, QuestionOption, QuestionMatching, QuestionOrder, Exam, ExamQuestion, StudentAnswer
 from app.blueprints.questions import questions_bp
 from app.services.exam_builder import duplicate_question, save_question_payload, validate_feedback
+from app.services.video_cues import build_video_metadata
 
 @questions_bp.route('/instructor/bank/create', methods=['POST'])
 @login_required
@@ -222,6 +223,18 @@ def import_questions_excel():
                 image_url=image_url,
                 video_url=video_url
             )
+            if video_url:
+                cue_at = row.get('video_question_at')
+                cue_start = row.get('video_start')
+                try:
+                    question.video_metadata = build_video_metadata(
+                        video_url,
+                        start=cue_start if pd.notna(cue_start) else None,
+                        question_at=cue_at if pd.notna(cue_at) else None,
+                    )
+                except ValueError:
+                    question.video_metadata = build_video_metadata(video_url)
+                question.video_timestamp = question.video_metadata['question_at']
             db.session.add(question)
             db.session.flush()
 

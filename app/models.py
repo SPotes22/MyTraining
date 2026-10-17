@@ -57,11 +57,17 @@ class Question(db.Model):
     image_url = db.Column(db.String(255), nullable=True)
     video_url = db.Column(db.String(255), nullable=True)
     video_timestamp = db.Column(db.Integer, nullable=True)
+    video_metadata = db.Column(db.JSON, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     options = db.relationship('QuestionOption', backref='question', cascade="all, delete-orphan")
     matching_pairs = db.relationship('QuestionMatching', backref='question', cascade="all, delete-orphan")
     order_items = db.relationship('QuestionOrder', backref='question', cascade="all, delete-orphan")
+
+    @property
+    def video_cue(self):
+        from app.services.video_cues import resolve_video_metadata
+        return resolve_video_metadata(self.video_url, self.video_metadata, self.video_timestamp)
 
 class QuestionOption(db.Model):
     __tablename__ = 'question_options'
@@ -159,6 +165,7 @@ class SessionQuestionSnapshot(db.Model):
     image_url = db.Column(db.String(255), nullable=True)
     video_url = db.Column(db.String(255), nullable=True)
     video_timestamp = db.Column(db.Integer, nullable=True)
+    video_metadata = db.Column(db.JSON, nullable=True)
     options_data = db.Column(db.JSON, nullable=True)
     matching_data = db.Column(db.JSON, nullable=True)
     ordering_data = db.Column(db.JSON, nullable=True)
@@ -166,6 +173,11 @@ class SessionQuestionSnapshot(db.Model):
 
     session = db.relationship('ExamSession', backref=db.backref('question_snapshots', cascade="all, delete-orphan", order_by="SessionQuestionSnapshot.order_index"))
     original_question = db.relationship('Question')
+
+    @property
+    def video_cue(self):
+        from app.services.video_cues import resolve_video_metadata
+        return resolve_video_metadata(self.video_url, self.video_metadata, self.video_timestamp)
 
     @property
     def type_label(self):

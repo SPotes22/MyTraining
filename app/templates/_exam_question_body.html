@@ -1,0 +1,87 @@
+{# Enunciado y/o respuestas de una pregunta del examen. Espera `item` (ver build_question_item)
+   y `part`: 'statement', 'answers' o 'all' (esta última la usa la carga diferida de RF-011). #}
+{% set q = item.question %}
+{% if part in ['statement', 'all'] %}
+  <h4 class="fw-normal mt-1">{{ q.statement }}</h4>
+  {% if q.image_url %}
+    <img src="{{ q.image_url }}" class="img-fluid rounded mb-3" style="max-height:250px;">
+  {% endif %}
+{% endif %}
+{% if part in ['answers', 'all'] %}
+  {# ── Opción múltiple / V-F / Video ── #}
+  {% if item.type in ['multiple_choice', 'true_false', 'video'] %}
+    {% for opt in item.options %}
+    <div class="form-check card mb-2 p-3 border option-card" data-opt-id="{{ opt.id }}">
+      <input class="form-check-input ms-1" type="radio"
+             name="question_{{ q.id }}" value="{{ opt.id }}" id="opt_{{ opt.id }}"
+             data-question-id="{{ q.id }}">
+      <label class="form-check-label ms-2 w-100" for="opt_{{ opt.id }}">
+        {{ opt.option_text }}
+      </label>
+    </div>
+    {% endfor %}
+
+  {# ── Selección múltiple ── #}
+  {% elif item.type == 'multiple_select' %}
+    <p class="text-muted small mb-3"><i class="bi bi-info-circle me-1"></i>Puedes seleccionar más de una opción.</p>
+    {% for opt in item.options %}
+    <div class="form-check card mb-2 p-3 border option-card">
+      <input class="form-check-input ms-1" type="checkbox"
+             name="question_{{ q.id }}" value="{{ opt.id }}" id="opt_{{ opt.id }}"
+             data-question-id="{{ q.id }}">
+      <label class="form-check-label ms-2 w-100" for="opt_{{ opt.id }}">{{ opt.option_text }}</label>
+    </div>
+    {% endfor %}
+
+  {# ── Emparejamiento ── #}
+  {% elif item.type == 'matching' %}
+    <p class="text-muted small mb-3">Selecciona la coincidencia para cada término.</p>
+    {% for pair in item.pairs %}
+    <div class="row align-items-center mb-3">
+      <div class="col-md-5 fw-semibold">{{ pair.left_text }}</div>
+      <div class="col-md-7">
+        <select name="question_{{ q.id }}_pair_{{ pair.id }}" class="form-select"
+                data-question-id="{{ q.id }}" data-pair-id="{{ pair.id }}">
+          <option value="">-- Selecciona --</option>
+          {% for right in item.right_options %}
+          <option value="{{ right }}">{{ right }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    {% endfor %}
+    <input type="hidden" name="question_{{ q.id }}_type" value="matching">
+
+  {# ── Ordenamiento ── #}
+  {% elif item.type == 'ordering' %}
+    <p class="text-muted small mb-3">
+      Asigna el número de orden a cada elemento (1 = primero).
+    </p>
+    {% for ord_item in item.order_list %}
+    <div class="row align-items-center mb-2">
+      <div class="col-md-8">{{ ord_item.item_text }}</div>
+      <div class="col-md-4">
+        <input type="number"
+               name="order_{{ q.id }}_{{ ord_item.id }}"
+               class="form-control ordering-input"
+               data-question-id="{{ q.id }}"
+               min="1" max="{{ item.order_list|length }}"
+               placeholder="#">
+      </div>
+    </div>
+    {% endfor %}
+    <input type="hidden" name="question_{{ q.id }}_type" value="ordering">
+
+  {# ── Respuesta abierta ── #}
+  {% elif item.type == 'open_answer' %}
+    <textarea name="question_{{ q.id }}"
+              class="form-control open-answer-input"
+              data-question-id="{{ q.id }}"
+              rows="6"
+              placeholder="Escribe tu respuesta aquí…"></textarea>
+    <small class="text-muted d-block mt-1">
+      Tu respuesta se guarda automáticamente cuando haces clic en "Siguiente" o "Enviar".
+    </small>
+
+  {% endif %}
+{% endif %}
