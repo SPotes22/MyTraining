@@ -130,7 +130,9 @@ def test_validate_config_requires_own_secrets(monkeypatch):
     import hashlib
     from app import config as config_module
     good = {'APP_ENV': 'preproduction', 'SECRET_KEY_FROM_ENV': True, 'SECRET_KEY': 'x' * 40,
-            'SUPERUSER_PASSWORD': TEST_PASSWORD, 'MIN_PASSWORD_LENGTH': 8}
+            'SUPERUSER_PASSWORD': TEST_PASSWORD, 'MIN_PASSWORD_LENGTH': 8,
+            'LEGAL_ENTITY_NAME': 'R', 'LEGAL_ENTITY_ID': '1', 'LEGAL_CONTACT_EMAIL': 'datos@example.com',
+            'LEGAL_ADDRESS': 'Calle 1'}
     validate_config(good)
 
     # Secretos ausentes, generados al vuelo o demasiado cortos: no arranca.
@@ -220,7 +222,8 @@ def test_instructor_self_signup_disabled_outside_development(app_ctx):
     c = app.test_client()
     assert b'value="instructor"' not in c.get('/register').data
     c.post('/register', data={'first_name': 'P', 'last_name': 'Q', 'email': 'nuevo@example.com',
-                              'password': TEST_PASSWORD, 'password_confirm': TEST_PASSWORD, 'role': 'instructor'})
+                              'password': TEST_PASSWORD, 'password_confirm': TEST_PASSWORD, 'role': 'instructor',
+                              'accept_terms': 'on'})
     with app.app_context():
         assert User.query.filter_by(email='nuevo@example.com').first().role == 'student'
 

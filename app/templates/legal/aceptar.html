@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}Autorización de datos | MyTraining{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-body p-4 p-md-5">
+        <h1 class="h4 fw-bold mb-2">Antes de continuar</h1>
+        <p class="text-muted">Para usar MyTraining necesitamos tu autorización para tratar tus datos personales (Ley 1581 de 2012).
+          Lee los <a href="{{ url_for('auth.terms') }}" target="_blank" rel="noopener">Términos y condiciones</a> y la
+          <a href="{{ url_for('auth.privacy_policy') }}" target="_blank" rel="noopener">Política de tratamiento de datos</a> (versión {{ version }}).</p>
+        <form method="post" action="{{ url_for('auth.accept_terms') }}">
+          {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
+          {% include 'legal/_consent_checkbox.html' %}
+          <button type="submit" class="btn btn-brand text-white w-100 py-2 fw-bold">Aceptar y continuar</button>
+        </form>
+        <p class="small text-muted mt-3 mb-0">Si no quieres aceptar, puedes <a href="{{ url_for('auth.logout') }}">cerrar sesión</a>,
+          <a href="{{ url_for('auth.export_my_data') }}">descargar tus datos</a> o eliminar tu cuenta aquí abajo.</p>
+      </div>
+    </div>
+    {% include '_delete_account_card.html' %}
+  </div>
+</div>
+{% endblock %}

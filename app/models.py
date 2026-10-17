@@ -22,6 +22,8 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=True)
     role = db.Column(db.String(20), default='student')
     default_exam_view = db.Column(db.String(40), default='questions')
+    # RL-10: antigüedad de las cuentas de invitado. Nulo en cuentas creadas antes del 17 oct 2026.
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=True)
 
     @property
     def full_name(self):
@@ -489,3 +491,16 @@ class AuditLog(db.Model):
     entity_id = db.Column(db.Integer, nullable=True)
     details = db.Column(db.JSON, nullable=True)
     ip = db.Column(db.String(45), nullable=True)
+
+
+class Consent(db.Model):
+    """RL-01 / RL-12: prueba de la autorización de tratamiento de datos y de la aceptación de
+    los términos. Una fila por aceptación; revocar no la borra (es evidencia), la marca."""
+    __tablename__ = 'consents'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    version = db.Column(db.String(20), nullable=False)        # versión de términos + política aceptada
+    source = db.Column(db.String(20), nullable=False)         # registro, invitado, aceptacion
+    accepted_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    ip = db.Column(db.String(45), nullable=True)
+    revoked_at = db.Column(db.DateTime, nullable=True)

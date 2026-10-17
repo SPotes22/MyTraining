@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% block title %}MyTraining | Exámenes y capacitación en tiempo real{% endblock %}
+{% block legal_footer %}{% endblock %}{# la landing tiene su propio pie con los enlaces #}
 
 {% block head %}
 <style>
@@ -630,8 +631,8 @@
             <div class="lp-footer-heading">Compañía</div>
             <ul class="lp-footer-links">
                 <li><a href="#">Sobre nosotros</a></li>
-                <li><a href="#privacidad">Política de privacidad</a></li>
-                <li><a href="#">Términos y condiciones</a></li>
+                <li><a href="{{ url_for('auth.privacy_policy') }}">Política de tratamiento de datos</a></li>
+                <li><a href="{{ url_for('auth.terms') }}">Términos y condiciones</a></li>
                 <li><a href="#">Declaración de accesibilidad</a></li>
             </ul>
         </div>

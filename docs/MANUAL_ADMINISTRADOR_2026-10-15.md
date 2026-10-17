@@ -108,6 +108,8 @@ Lista completa con comentarios en [`env.example`](../env.example).
 | `SECRET_KEY` | Sí | 64 caracteres aleatorios | Firma de cookies y tokens CSRF |
 | `SUPERUSER_EMAIL` / `SUPERUSER_PASSWORD` / `SUPERUSER_USERNAME` | Sí | Tus datos | Superusuario inicial (solo se crea si no existe) |
 | `DATABASE_URL` | No | `sqlite:////data/mytraining.db` (ya en la imagen) | Base de datos |
+| `LEGAL_ENTITY_NAME`, `LEGAL_ENTITY_ID`, `LEGAL_CONTACT_EMAIL`, `LEGAL_ADDRESS` | **Sí** | Nombre o razón social del responsable del tratamiento, NIT o cédula, correo para consultas y reclamos, dirección | Aparecen en `/terminos` y `/politica-de-datos` (Ley 1581). **Sin ellos la app no arranca** fuera de desarrollo |
+| `GUEST_RETENTION_DAYS` | No | `90` | Días tras los cuales se anonimizan los invitados (§4.5) |
 | `PROXY_FIX_HOPS` | No | `1` | Número de proxies delante de la app |
 | `ALLOW_INSTRUCTOR_SIGNUP` | No | `false` | `true` permite que cualquiera se registre como profesor |
 | `SESSION_COOKIE_SECURE` | No | `true` | Ponlo en `false` **solo** para pruebas locales sin HTTPS |
@@ -171,7 +173,22 @@ PY
 
 ### 4.5 Invitados
 
-Cada ingreso por código crea un usuario estudiante sin correo, que no se borra solo. Es normal ver crecer el contador de estudiantes. Política pendiente: anonimizarlos a los 90 días (requisito legal RL-10).
+Cada ingreso por código crea un usuario estudiante sin correo. La política de datos promete anonimizarlos a los `GUEST_RETENTION_DAYS` días (90; RL-10), así que programa el script:
+
+```bash
+# crontab -e en la VM (todos los días a las 03:40)
+40 3 * * * docker exec mytraining python scripts/anonymize_guests.py >> /var/log/mytraining-guests.log 2>&1
+```
+
+Borra el nombre del invitado y conserva sus respuestas sin identidad, igual que cuando alguien elimina su cuenta. Con `--dry-run` solo cuenta cuántos anonimizaría.
+
+### 4.5.1 Términos, política y autorizaciones
+
+- Los textos están en `/terminos` y `/politica-de-datos` (plantillas en `app/templates/legal/`). Son un **borrador técnico: deben validarse con un abogado** antes de abrir a usuarios reales.
+- Al registrarse o entrar como invitado, la persona marca una casilla (nunca viene marcada). Queda registrada la versión aceptada, la fecha y la IP (tabla `consents`) y una entrada `consent.accept` en la auditoría.
+- **Usuarios que ya existían:** la primera vez que entren después de la actualización verán una pantalla para aceptar; hasta hacerlo solo pueden ver los textos, su perfil, descargar sus datos o eliminar su cuenta. Incluye a los administradores.
+- **Si cambias el texto:** sube `LEGAL_VERSION` en `app/services/legal.py` (por ejemplo, a la fecha del cambio). Todos deberán aceptar la nueva versión en su próximo ingreso.
+- **Revocaciones:** quien revoca desde su perfil queda en la misma situación que un usuario sin autorización. Se registran como `consent.revoke`.
 
 ---
 
@@ -180,7 +197,8 @@ Cada ingreso por código crea un usuario estudiante sin correo, que no se borra 
 Los usuarios consultan, corrigen, descargan y eliminan sus datos desde **Mi perfil y mis datos**. Quedan para ti:
 
 - **Profesores con contenido y administradores que piden su supresión:** la página no les deja hacerlo solos. Reasigna o archiva su contenido y cámbiales la contraseña (§4.4); la anonimización completa de un profesor con contenido está pendiente de definir con el responsable legal.
-- **Plazos legales (Ley 1581):** consultas en máximo 10 días hábiles y reclamos en 15. Cada exportación y supresión queda en la auditoría (`user.export`, `user.anonymize`).
+- **Plazos legales (Ley 1581):** consultas en máximo 10 días hábiles y reclamos en 15, contados desde que llega el correo a `LEGAL_CONTACT_EMAIL`. Lleva un registro de cada solicitud (fecha de llegada, quién, qué pide, fecha y sentido de la respuesta), por ejemplo en una hoja de cálculo compartida (RL-04). Cada exportación, supresión, aceptación y revocación hecha desde la app queda en la auditoría (`user.export`, `user.anonymize`, `consent.accept`, `consent.revoke`).
+- **Prueba de la autorización de alguien:** está en su archivo de *Descargar mis datos* (sección `autorizaciones`) o en la tabla `consents`.
 
 ## 5. Respaldos y restauración
 
@@ -251,6 +269,18 @@ Mientras no exista ese secreto, el job falla en cada push: es la señal de que f
 
 **Ante un incidente:** rota la credencial afectada, quítala del código (ver el Manual de desarrollo §2.4) y cierra el incidente en el panel de GitGuardian como *resuelto*.
 
+### 6.2 Incidentes de seguridad con datos personales (RL-07)
+
+Ejemplos: acceso no autorizado a resultados o cuentas, base o respaldo expuestos, un secreto filtrado.
+
+1. **Contener:** cambia las claves afectadas (`SECRET_KEY` cierra todas las sesiones; contraseñas de administradores), corta el acceso expuesto y conserva los logs y el registro de auditoría de esas fechas.
+2. **Evaluar:** qué datos, de cuántas personas y desde cuándo. `/admin/audit` y los logs JSON (`docker logs`) ayudan a reconstruir lo ocurrido.
+3. **Reportar a la SIC** en el Registro Nacional de Bases de Datos (módulo de reporte de incidentes) dentro de los 15 días hábiles siguientes a detectarlo, como pide la Circular Externa 003 de 2018 de la SIC. Confirma el plazo vigente con el abogado.
+4. **Avisar a las personas afectadas** cuando el incidente pueda afectarlas, con qué pasó, qué datos y qué hacer.
+5. **Registrar** el incidente (fecha, alcance, acciones, reporte) y corregir la causa.
+
+Designa a una persona responsable de este procedimiento antes de abrir a usuarios reales.
+
 ---
 
 ## 7. Actualizar la aplicación
@@ -312,7 +342,9 @@ Los cambios de la base se aplican solos al arrancar (migraciones de Alembic, car
 - [ ] `/healthz` monitoreado con alerta
 - [ ] Respaldo diario + copia a Cloud Storage + snapshot de disco; **simulacro semanal programado (§5.3) y una restauración completa hecha**
 - [ ] Prueba de carga repetida en la VM real (`scripts/loadtest/`, ver la Auditoría §6) para confirmar el tope de envíos simultáneos
-- [ ] **Política de tratamiento de datos publicada y casilla de autorización** (Ley 1581; SRS §8, RL-01 a RL-03). Validada por un abogado
+- [ ] Variables `LEGAL_*` con los datos reales del responsable; revisar cómo se ven `/terminos` y `/politica-de-datos`
+- [ ] **Términos y política validados por un abogado** (Ley 1581; SRS §8). Si cambian, subir `LEGAL_VERSION`
+- [ ] Cron de anonimización de invitados (§4.5) y persona responsable de incidentes designada (§6.2)
 - [ ] Decidido si habrá menores de edad (RL-05)
 - [ ] Decidido si se abre el auto-registro de profesores (§4.2)
 - [ ] Profesores informados de las limitaciones (Manual de usuario §4), en especial que no hay temporizador

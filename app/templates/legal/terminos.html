@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% block title %}Términos y condiciones | MyTraining{% endblock %}
+{# RL-11 y RL-12. Si cambias el contenido, sube LEGAL_VERSION en app/services/legal.py:
+   todos los usuarios deberán aceptar de nuevo. #}
+{% set responsable = config.LEGAL_ENTITY_NAME or '[LEGAL_ENTITY_NAME sin configurar]' %}
+{% set identificacion = config.LEGAL_ENTITY_ID or '[LEGAL_ENTITY_ID sin configurar]' %}
+{% set correo = config.LEGAL_CONTACT_EMAIL or '[LEGAL_CONTACT_EMAIL sin configurar]' %}
+{% block content %}
+<div class="row justify-content-center">
+<article class="col-lg-9 legal-text">
+  <h1 class="h2 fw-bold mb-1">Términos y condiciones de uso</h1>
+  <p class="text-muted small">Versión {{ version }} · Vigentes desde el 17 de octubre de 2026</p>
+
+  <h2 class="h5 fw-bold mt-4">1. Quién presta el servicio</h2>
+  <p>MyTraining es una plataforma web para crear, aplicar y calificar exámenes y capacitaciones. La opera {{ responsable }}, identificado con {{ identificacion }} (en adelante, "el responsable"). Contacto: <a href="mailto:{{ correo }}">{{ correo }}</a>.</p>
+
+  <h2 class="h5 fw-bold mt-4">2. Aceptación</h2>
+  <p>Al marcar la casilla de aceptación al crear tu cuenta, al entrar a una sala o cuando la plataforma te lo pida, aceptas estos términos y la <a href="{{ url_for('auth.privacy_policy') }}">Política de tratamiento de datos</a>. Esa aceptación es electrónica y vale como si la hubieras firmado (Ley 527 de 1999): guardamos la fecha, la hora, la versión aceptada y la dirección IP desde la que aceptaste. Si no estás de acuerdo, no uses la plataforma.</p>
+  <p>Si eres menor de edad, debes usar la plataforma con la autorización de tu madre, padre o representante legal.</p>
+
+  <h2 class="h5 fw-bold mt-4">3. El servicio</h2>
+  <ul>
+    <li>La plataforma es gratuita: no cobra suscripciones ni planes.</li>
+    <li>Está en fase de <strong>pre-producción</strong>: puede tener interrupciones, cambios o errores. Hacemos copias de seguridad diarias, pero no garantizamos una disponibilidad continua.</li>
+    <li>Podemos cambiar, ampliar o retirar funciones. Si un cambio afecta tus datos, te avisaremos.</li>
+  </ul>
+
+  <h2 class="h5 fw-bold mt-4">4. Tu cuenta</h2>
+  <ul>
+    <li>Los datos que registres deben ser verdaderos y tuyos. No crees cuentas a nombre de otra persona.</li>
+    <li>Tu contraseña es personal. Eres responsable de lo que se haga con tu cuenta; si sospechas que alguien más la usa, cámbiala y avísanos.</li>
+    <li>Las cuentas de invitado (ingreso con nombre y código de sala) solo sirven para la sala a la que entraste, no tienen contraseña y se anonimizan con el tiempo (ver la Política de tratamiento de datos).</li>
+    <li>Puedes eliminar tu cuenta cuando quieras desde <em>Mi perfil</em>.</li>
+  </ul>
+
+  <h2 class="h5 fw-bold mt-4">5. Uso aceptable</h2>
+  <p>No está permitido:</p>
+  <ul>
+    <li>acceder o intentar acceder a cuentas, exámenes, resultados o datos de otras personas;</li>
+    <li>interferir con el funcionamiento de la plataforma, probar sus vulnerabilidades sin autorización escrita o automatizar el envío de respuestas;</li>
+    <li>suplantar a otra persona o presentar un examen en nombre de otro;</li>
+    <li>publicar contenido ilegal, ofensivo, discriminatorio, que infrinja derechos de terceros o que contenga datos personales sensibles de otras personas;</li>
+    <li>usar la plataforma para enviar publicidad o con fines distintos a la formación y la evaluación.</li>
+  </ul>
+  <p>Si incumples estas reglas podemos suspender o eliminar tu cuenta y retirar el contenido, sin perjuicio de las acciones legales que correspondan.</p>
+
+  <h2 class="h5 fw-bold mt-4">6. Contenido que suben los profesores</h2>
+  <ul>
+    <li>Quien crea preguntas, exámenes, capacitaciones, imágenes, documentos o videos <strong>garantiza que es su autor o que tiene permiso</strong> para usarlos y compartirlos con sus estudiantes, conforme a la Ley 23 de 1982 y la Decisión Andina 351 de 1993, y responde ante terceros por ese contenido.</li>
+    <li>El profesor conserva sus derechos sobre su contenido. Solo autoriza al responsable a almacenarlo, copiarlo y mostrarlo dentro de la plataforma en la medida necesaria para prestar el servicio.</li>
+    <li>Si crees que un contenido infringe tus derechos, escríbenos a <a href="mailto:{{ correo }}">{{ correo }}</a> indicando cuál es y por qué. Podemos retirarlo de forma preventiva mientras se aclara, y avisaremos a quien lo publicó.</li>
+  </ul>
+
+  <h2 class="h5 fw-bold mt-4">7. Exámenes y resultados</h2>
+  <p>La plataforma es una herramienta: las preguntas, las respuestas correctas, la calificación de respuestas abiertas y las decisiones académicas o laborales que se tomen con los resultados son responsabilidad del profesor o de la institución que aplica el examen. Si crees que una nota está mal calculada, acude primero a tu profesor.</p>
+
+  <h2 class="h5 fw-bold mt-4">8. Propiedad de la plataforma</h2>
+  <p>El software, el diseño y la marca MyTraining pertenecen al responsable o a sus licenciantes. Estos términos no te dan derechos sobre ellos más allá de usar la plataforma.</p>
+
+  <h2 class="h5 fw-bold mt-4">9. Responsabilidad</h2>
+  <p>En la medida en que la ley lo permita, el responsable no responde por daños derivados de interrupciones del servicio, pérdida de conexión durante un examen, uso indebido de la cuenta por parte de terceros a quienes el usuario dio acceso, ni por el contenido publicado por profesores u otros usuarios. Nada de lo anterior limita los derechos que te reconoce la ley colombiana.</p>
+
+  <h2 class="h5 fw-bold mt-4">10. Datos personales</h2>
+  <p>El tratamiento de tus datos se rige por la <a href="{{ url_for('auth.privacy_policy') }}">Política de tratamiento de datos</a>, que explica qué datos guardamos, para qué, por cuánto tiempo y cómo ejercer tus derechos.</p>
+
+  <h2 class="h5 fw-bold mt-4">11. Cambios a estos términos</h2>
+  <p>Si cambiamos estos términos, publicaremos la nueva versión aquí y te pediremos aceptarla la próxima vez que ingreses. Si no la aceptas, puedes eliminar tu cuenta.</p>
+
+  <h2 class="h5 fw-bold mt-4">12. Ley aplicable</h2>
+  <p>Estos términos se rigen por las leyes de la República de Colombia. Las diferencias se intentarán resolver primero de forma directa escribiendo a <a href="mailto:{{ correo }}">{{ correo }}</a>; si no hay acuerdo, ante las autoridades competentes de Colombia.</p>
+</article>
+</div>
+{% endblock %}

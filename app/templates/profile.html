@@ -49,31 +49,31 @@
       <div class="card-body p-4 d-flex flex-wrap justify-content-between align-items-center gap-3">
         <div>
           <h5 class="fw-bold mb-1">Descargar mis datos</h5>
-          <p class="text-muted small mb-0">Un archivo JSON con tu perfil, tus intentos de examen y respuestas, tu progreso en capacitaciones y tus votos en encuestas.</p>
+          <p class="text-muted small mb-0">Un archivo JSON con tu perfil, tus intentos de examen y respuestas, tu progreso en capacitaciones, tus votos en encuestas y el registro de tus autorizaciones.</p>
         </div>
         <a class="btn btn-outline-secondary" href="{{ url_for('auth.export_my_data') }}"><i class="bi bi-download me-1"></i>Descargar</a>
       </div>
     </div>
 
-    <div class="card border-danger-subtle shadow-sm">
+    <div class="card border-0 shadow-sm mb-4">
       <div class="card-body p-4">
-        <h5 class="fw-bold text-danger mb-1">Eliminar mi cuenta</h5>
-        {% if owns_content or current_user.role in ['superuser', 'admin'] %}
-          <p class="small mb-0">Tu cuenta tiene exámenes, bancos o capacitaciones, o permisos de administración. Para eliminarla escribe al responsable de la plataforma: un administrador gestionará la supresión sin dejar a tus estudiantes sin su historial.</p>
-        {% else %}
-          <p class="small text-muted">Se borran tu nombre, correo, teléfono, institución y contraseña, y ya no podrás entrar. Tus respuestas en exámenes se conservan <strong>sin identificarte</strong>, para que el profesor no pierda las estadísticas de su grupo. No se puede deshacer.</p>
-          <form method="post" action="{{ url_for('auth.delete_my_account') }}" class="row g-2 align-items-end">
-            {% if current_user.password_hash %}
-            <div class="col-md-5"><label class="form-label small fw-semibold" for="del_pw">Contraseña actual</label>
-              <input id="del_pw" name="current_password" type="password" class="form-control" required></div>
-            {% endif %}
-            <div class="col-md-4"><label class="form-label small fw-semibold" for="del_confirm">Escribe ELIMINAR</label>
-              <input id="del_confirm" name="confirm" class="form-control" autocomplete="off" required></div>
-            <div class="col-md-3"><button class="btn btn-danger w-100">Eliminar mi cuenta</button></div>
+        <h5 class="fw-bold mb-1">Mi autorización de tratamiento de datos</h5>
+        {% if consent %}
+          <p class="text-muted small mb-3">Aceptaste los <a href="{{ url_for('auth.terms') }}">términos</a> y la <a href="{{ url_for('auth.privacy_policy') }}">política de tratamiento de datos</a> (versión {{ consent.version }}) el {{ consent.accepted_at.strftime('%Y-%m-%d %H:%M') }} UTC.
+            Puedes revocar tu autorización cuando quieras; mientras no la otorgues de nuevo no podrás usar la plataforma, pero podrás consultar, descargar o eliminar tus datos.</p>
+          <form method="post" action="{{ url_for('auth.revoke_consent') }}" class="row g-2 align-items-end">
+            <div class="col-md-5"><label class="form-label small fw-semibold" for="rev_confirm">Escribe REVOCAR</label>
+              <input id="rev_confirm" name="confirm" class="form-control" autocomplete="off" required></div>
+            <div class="col-md-4"><button class="btn btn-outline-danger w-100">Revocar mi autorización</button></div>
           </form>
+        {% else %}
+          <p class="small mb-2">No tienes una autorización vigente.</p>
+          <a class="btn btn-brand text-white btn-sm" href="{{ url_for('auth.accept_terms') }}">Revisar y aceptar</a>
         {% endif %}
       </div>
     </div>
+
+    {% include '_delete_account_card.html' %}
   </div>
 </div>
 {% endblock %}

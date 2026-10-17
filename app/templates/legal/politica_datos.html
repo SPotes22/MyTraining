@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+{% block title %}Política de tratamiento de datos | MyTraining{% endblock %}
+{# RL-02 (Decreto 1377 de 2013, art. 13). Si cambias el contenido, sube LEGAL_VERSION en
+   app/services/legal.py: todos los usuarios deberán aceptar de nuevo. #}
+{% set responsable = config.LEGAL_ENTITY_NAME or '[LEGAL_ENTITY_NAME sin configurar]' %}
+{% set identificacion = config.LEGAL_ENTITY_ID or '[LEGAL_ENTITY_ID sin configurar]' %}
+{% set correo = config.LEGAL_CONTACT_EMAIL or '[LEGAL_CONTACT_EMAIL sin configurar]' %}
+{% set direccion = config.LEGAL_ADDRESS or '[LEGAL_ADDRESS sin configurar]' %}
+{% block content %}
+<div class="row justify-content-center">
+<article class="col-lg-9 legal-text">
+  <h1 class="h2 fw-bold mb-1">Política de tratamiento de datos personales</h1>
+  <p class="text-muted small">Versión {{ version }} · Vigente desde el 17 de octubre de 2026 · Ley 1581 de 2012 y Decreto 1377 de 2013 (compilado en el Decreto 1074 de 2015)</p>
+
+  <h2 class="h5 fw-bold mt-4">1. Responsable del tratamiento</h2>
+  <ul>
+    <li><strong>Responsable:</strong> {{ responsable }}</li>
+    <li><strong>Identificación (NIT o cédula):</strong> {{ identificacion }}</li>
+    <li><strong>Dirección:</strong> {{ direccion }}</li>
+    <li><strong>Correo para consultas, reclamos y solicitudes sobre datos personales:</strong> <a href="mailto:{{ correo }}">{{ correo }}</a></li>
+  </ul>
+  <p>En adelante, "MyTraining" o "el responsable".</p>
+
+  <h2 class="h5 fw-bold mt-4">2. Qué datos tratamos</h2>
+  <ul>
+    <li><strong>Para crear una cuenta:</strong> nombre, apellido, correo electrónico y contraseña (guardada cifrada, nunca en texto plano). De forma opcional: teléfono e institución.</li>
+    <li><strong>Para entrar a una sala como invitado:</strong> solo el nombre que escribas.</li>
+    <li><strong>Por el uso de la plataforma:</strong> respuestas, notas, intentos y fechas de los exámenes; progreso y respuestas en capacitaciones; y votos en encuestas.</li>
+    <li><strong>Para seguridad y como prueba de tu autorización:</strong> la dirección IP, la fecha y la versión de los documentos aceptados, y un registro de las acciones sensibles (por ejemplo, cambiar la contraseña o eliminar un examen) identificadas por número de usuario.</li>
+  </ul>
+  <p>No pedimos datos sensibles (salud, origen étnico, orientación política o religiosa, datos biométricos) ni datos de pago: la plataforma es gratuita. Te pedimos no incluir datos sensibles en respuestas abiertas.</p>
+
+  <h2 class="h5 fw-bold mt-4">3. Para qué los usamos (finalidades)</h2>
+  <ol>
+    <li>Crear y administrar tu cuenta e identificarte al iniciar sesión.</li>
+    <li>Permitir que presentes exámenes y capacitaciones, calificarlos y mostrarte los resultados y la retroalimentación.</li>
+    <li>Mostrar a tu profesor o profesora, y a los administradores de la plataforma, tus resultados y avance en los exámenes, salas y capacitaciones en que participas.</li>
+    <li>Generar capacitaciones de refuerzo con las preguntas que fallaste.</li>
+    <li>Enviarte correos operativos, como el enlace para recuperar tu contraseña. No enviamos publicidad.</li>
+    <li>Proteger la plataforma: prevenir accesos indebidos, investigar incidentes y llevar el registro de auditoría.</li>
+    <li>Atender tus consultas y reclamos y cumplir obligaciones legales.</li>
+  </ol>
+  <p>No vendemos, alquilamos ni cedemos tus datos a terceros, y no los usamos para publicidad ni para perfiles comerciales.</p>
+
+  <h2 class="h5 fw-bold mt-4">4. Tus derechos como titular</h2>
+  <p>Según el artículo 8 de la Ley 1581 de 2012 tienes derecho a:</p>
+  <ul>
+    <li><strong>Conocer, actualizar y rectificar</strong> tus datos: desde <a href="{{ url_for('auth.profile') }}">Mi perfil</a> puedes verlos y corregirlos en cualquier momento.</li>
+    <li><strong>Pedir prueba de tu autorización:</strong> la ves en <em>Mi perfil</em> y viene incluida en el archivo de <em>Descargar mis datos</em>.</li>
+    <li><strong>Ser informado del uso</strong> que se ha dado a tus datos: <em>Descargar mis datos</em> entrega todo lo que la plataforma guarda sobre ti.</li>
+    <li><strong>Revocar la autorización y pedir la supresión</strong> de tus datos: desde <em>Mi perfil</em> puedes revocar la autorización o eliminar tu cuenta. La supresión no procede cuando exista un deber legal o contractual de conservar la información.</li>
+    <li><strong>Presentar quejas ante la Superintendencia de Industria y Comercio (SIC)</strong>, después de haber agotado el trámite de consulta o reclamo ante el responsable.</li>
+    <li><strong>Acceder gratuitamente</strong> a tus datos.</li>
+  </ul>
+
+  <h2 class="h5 fw-bold mt-4">5. Cómo presentar consultas y reclamos</h2>
+  <p>Escribe a <a href="mailto:{{ correo }}">{{ correo }}</a> desde el correo de tu cuenta (o indica tu nombre y la sala, si entraste como invitado), con tu solicitud y los documentos que quieras hacer valer.</p>
+  <ul>
+    <li><strong>Consultas</strong> (qué datos tenemos y cómo los usamos): respondemos en máximo <strong>10 días hábiles</strong> desde que la recibimos. Si no es posible, te informamos el motivo y la fecha de respuesta, que no superará 5 días hábiles más.</li>
+    <li><strong>Reclamos</strong> (corrección, actualización, supresión o incumplimiento): respondemos en máximo <strong>15 días hábiles</strong> desde el día siguiente a recibirlo. Si no es posible, te informamos el motivo y la fecha de respuesta, que no superará 8 días hábiles más. Si el reclamo está incompleto, te pediremos completarlo dentro de los 5 días siguientes; si pasan 2 meses sin respuesta, entenderemos que desististe.</li>
+  </ul>
+
+  <h2 class="h5 fw-bold mt-4">6. Niñas, niños y adolescentes</h2>
+  <p>Si eres menor de 18 años, tu madre, padre o representante legal debe autorizar el tratamiento de tus datos. Solo los usamos para fines educativos (presentar exámenes y capacitaciones y ver tus resultados), respetando tu interés superior y tus derechos fundamentales. Tu representante puede ejercer tus derechos escribiendo al correo de la sección 1.</p>
+
+  <h2 class="h5 fw-bold mt-4">7. Dónde se guardan y con quién se comparten</h2>
+  <p>Los datos se almacenan en servidores de proveedores de infraestructura en la nube contratados por el responsable, que pueden estar ubicados fuera de Colombia y que solo los tratan por cuenta del responsable (transmisión). Además, al usar la plataforma tu navegador se conecta directamente con estos servicios, que reciben tu dirección IP:</p>
+  <ul>
+    <li>jsDelivr y cdn.socket.io (componentes de la página) y Google Fonts (tipografías);</li>
+    <li>YouTube o Vimeo, solo cuando un profesor incluye un video de esas plataformas. Se aplican sus propias políticas de privacidad.</li>
+  </ul>
+  <p>Al aceptar esta política autorizas esa transferencia o transmisión internacional, conforme al artículo 26 de la Ley 1581 de 2012.</p>
+
+  <h2 class="h5 fw-bold mt-4">8. Cuánto tiempo los conservamos</h2>
+  <ul>
+    <li>Los datos de tu cuenta, mientras esté activa o hasta que pidas su supresión.</li>
+    <li>Las cuentas de invitado se anonimizan a los {{ config.GUEST_RETENTION_DAYS }} días de creadas.</li>
+    <li>Cuando eliminas tu cuenta o se anonimiza, se borran tu nombre, correo, teléfono, institución y contraseña. Tus respuestas y notas se conservan <strong>sin identificarte</strong> para que el profesor no pierda las estadísticas de su grupo.</li>
+    <li>Las copias de seguridad se conservan 30 días; después se borran.</li>
+    <li>El registro de tu autorización y su revocación se conserva como prueba mientras pueda ser necesario ante una reclamación o una autoridad.</li>
+  </ul>
+
+  <h2 class="h5 fw-bold mt-4">9. Seguridad</h2>
+  <p>Aplicamos medidas técnicas y administrativas para proteger tus datos: conexión cifrada (HTTPS), contraseñas cifradas, bloqueo tras intentos fallidos de inicio de sesión, control de acceso por rol y por dueño de cada recurso, registro de auditoría y copias de seguridad diarias. Ningún sistema es completamente infalible: si ocurre un incidente de seguridad que afecte tus datos, lo reportaremos a la Superintendencia de Industria y Comercio y te informaremos cuando corresponda.</p>
+
+  <h2 class="h5 fw-bold mt-4">10. Cookies</h2>
+  <p>Usamos solo cookies técnicas, necesarias para mantener tu sesión iniciada y proteger los formularios (token CSRF). No usamos cookies de analítica ni de publicidad.</p>
+
+  <h2 class="h5 fw-bold mt-4">11. Cambios a esta política</h2>
+  <p>Si cambiamos esta política, publicaremos la nueva versión en esta página y te pediremos aceptarla de nuevo la próxima vez que ingreses. Esta política rige desde la fecha indicada al inicio y mientras la plataforma esté en funcionamiento.</p>
+
+  <p class="mt-4"><a href="{{ url_for('auth.terms') }}">Ver los Términos y condiciones</a></p>
+</article>
+</div>
+{% endblock %}

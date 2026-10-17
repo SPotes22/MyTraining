@@ -1,0 +1,20 @@
+{# Supresión de la cuenta (RF-029). Espera `owns_content`. Se usa en el perfil y en legal/aceptar.html. #}
+    <div class="card border-danger-subtle shadow-sm">
+      <div class="card-body p-4">
+        <h5 class="fw-bold text-danger mb-1">Eliminar mi cuenta</h5>
+        {% if owns_content or current_user.role in ['superuser', 'admin'] %}
+          <p class="small mb-0">Tu cuenta tiene exámenes, bancos o capacitaciones, o permisos de administración. Para eliminarla escribe al responsable de la plataforma: un administrador gestionará la supresión sin dejar a tus estudiantes sin su historial.</p>
+        {% else %}
+          <p class="small text-muted">Se borran tu nombre, correo, teléfono, institución y contraseña, y ya no podrás entrar. Tus respuestas en exámenes se conservan <strong>sin identificarte</strong>, para que el profesor no pierda las estadísticas de su grupo. No se puede deshacer.</p>
+          <form method="post" action="{{ url_for('auth.delete_my_account') }}" class="row g-2 align-items-end">
+            {% if current_user.password_hash %}
+            <div class="col-md-5"><label class="form-label small fw-semibold" for="del_pw">Contraseña actual</label>
+              <input id="del_pw" name="current_password" type="password" class="form-control" required></div>
+            {% endif %}
+            <div class="col-md-4"><label class="form-label small fw-semibold" for="del_confirm">Escribe ELIMINAR</label>
+              <input id="del_confirm" name="confirm" class="form-control" autocomplete="off" required></div>
+            <div class="col-md-3"><button class="btn btn-danger w-100">Eliminar mi cuenta</button></div>
+          </form>
+        {% endif %}
+      </div>
+    </div>

@@ -44,6 +44,7 @@
 | I-16 | **Logs con `logging`, nunca `print`**, y personas solo por id (sin correos, nombres ni tokens) | RNF-17; un test falla si aparece un `print` nuevo en `app/` | `app/logging_setup.py` |
 | I-17 | **Las escrituras concurrentes pesadas pasan por `write_lock`** (`@serialize_on_sqlite` o `with sqlite_write_lock()`) | Con SQLite, varios hilos escribiendo a la vez se estorban (Auditoría §4.1). Solo es válido con 1 worker (I-1) | `app/services/write_lock.py` |
 | I-18 | **Subidas solo con `app/services/uploads.py`** (lista blanca, firma del contenido, tope por tipo, nombre aleatorio) | RNF-07; nunca guardes `request.files[...]` directamente | `learning/routes.py` |
+| I-20 | **Nada de datos personales sin autorización vigente.** Registro, ingreso de invitados y cualquier flujo nuevo que cree usuarios exigen la casilla (`legal.accepted_from_form`) y registran `legal.record_consent`. Un endpoint nuevo queda detrás de `consent_gate`; solo se exceptúa si lo necesita alguien sin autorización (textos legales, perfil, exportar, eliminar, salir) | Ley 1581 (RL-01). Cambiar el texto de `templates/legal/` exige subir `LEGAL_VERSION` | `auth/routes.py`, `services/legal.py` |
 | I-19 | **Todo `socketio.emit` lleva destinatario** (`to=`): sala, `teacher_<id>` o un `sid` | Un emit sin destinatario llega a todos los conectados (Auditoría S-22) | Sockets y rutas |
 
 ---
@@ -79,7 +80,7 @@ La base queda en `instance/database.db`: las rutas `sqlite:///` relativas se res
 | Simulacro de restauración | `python scripts/restore_drill.py backups/ --compare instance/database.db` |
 | Accesibilidad | `scripts/a11y/` (axe-core + recorrido con teclado; instrucciones en la cabecera de cada script) |
 | Un archivo / un test | `pytest tests/test_preproduction_hardening.py -k socket -s` |
-| Arrancar como pre-producción en local | `APP_ENV=preproduction SESSION_COOKIE_SECURE=0 SECRET_KEY=$(python -c 'import secrets;print(secrets.token_hex(32))') SUPERUSER_PASSWORD="$(python -c 'import secrets;print(secrets.token_urlsafe(16))')" gunicorn -c gunicorn.conf.py wsgi:app` |
+| Arrancar como pre-producción en local | `APP_ENV=preproduction SESSION_COOKIE_SECURE=0 SECRET_KEY=$(python -c 'import secrets;print(secrets.token_hex(32))') SUPERUSER_PASSWORD="$(python -c 'import secrets;print(secrets.token_urlsafe(16))')" LEGAL_ENTITY_NAME=Prueba LEGAL_ENTITY_ID=0 LEGAL_CONTACT_EMAIL=datos@example.com LEGAL_ADDRESS=Prueba gunicorn -c gunicorn.conf.py wsgi:app` |
 | Salud | `curl localhost:8080/healthz` |
 | Pruebas de carga | `scripts/loadtest/`: `submit_burst.py` (envíos) y `room_events.py` (eventos de sala). Instrucciones en la Auditoría §6; requieren `LOADTEST_PASSWORD` |
 | Respaldo | `python scripts/backup_sqlite.py instance/database.db backups/` |
@@ -175,6 +176,7 @@ app/
     mailer.py          SMTP (MAIL_*); sin servidor imprime en consola en desarrollo
     password_reset.py  RF-028: token firmado de un solo uso (ligado al hash de la contraseña)
     personal_data.py   RF-029: exportar y anonimizar los datos de un usuario
+    legal.py           RL-01/RL-12: LEGAL_VERSION, registrar y revocar autorizaciones
     uploads.py         RNF-07: validar y guardar archivos subidos (firma, tope por tipo)
     write_lock.py      RNF-08: candado de escritura del proceso cuando la base es SQLite
     video_cues.py      RF-011: URL → proveedor (YouTube/Vimeo/archivo) y validación de esquema,
@@ -360,6 +362,8 @@ db.session.commit()
 | El profesor ve la lista de estudiantes con medio segundo de atraso | Es a propósito: la lista se agrupa cada 0,5 s por sala | `STUDENTS_THROTTLE_SECONDS` en `realtime/sockets.py` |
 | Error 500 solo en PostgreSQL (`operator does not exist: integer = character varying`) | Se comparó un id con texto del formulario | `request.form.getlist(..., type=int)` (I-12) |
 | `test_models_match_migrations` falla | Cambiaste un modelo sin migración | §5.5 |
+| Todo redirige a `/aceptar-terminos` | El usuario no tiene autorización para la `LEGAL_VERSION` actual (usuario antiguo, revocó o cambió la versión) | Es lo esperado (RL-01). En tests usa el comportamiento por defecto de `conftest.py` |
+| La app no arranca: `datos del responsable del tratamiento` | Faltan `LEGAL_*` fuera de desarrollo | Manual de administrador §3 |
 | Una subida válida se rechaza por "contenido no corresponde" | Tipo nuevo sin firma en `uploads._matches_signature` | Agrega la extensión a `KINDS` y su firma |
 | La app no arranca: `Configuración insegura…` | `APP_ENV` ≠ development con secretos de ejemplo | `validate_config`; para pruebas locales usa `APP_ENV=development` |
 | El login no persiste en local con gunicorn | Cookie `Secure` sobre http | `SESSION_COOKIE_SECURE=0` en local |
@@ -396,6 +400,7 @@ db.session.commit()
 | `test_preproduction_hardening.py` | Seguridad y reglas: IDOR, sockets, CSRF, bloqueo de login, RN-09, RN-10, RN-12, RN-13, borrado de profesores, `validate_config`, `/healthz` |
 | `test_question_bank.py` | Bancos y preguntas de cada tipo, filtros, importación CSV, redirección abierta, acceso cruzado |
 | `test_polls.py` | Encuestas: votos, cierre, sala propia, privacidad de respuestas abiertas |
+| (registro e invitados en tests) | Envía `'accept_terms': 'on'` en el formulario |
 | `test_learning.py` | Capacitaciones: editor, publicar, duplicar, exportar/importar, cursos no publicados, calificación de bloques (incluido `fill_blank`), actividad solo al autor |
 | `test_mailer.py` | Envío SMTP con un servidor falso, sin red |
 | `test_logging.py` | RNF-17: formato JSON, redacción, sin `print` nuevos |
@@ -404,7 +409,8 @@ db.session.commit()
 | `test_room_throttle.py` | RNF-09: agrupación de la lista de estudiantes; hilos de Gunicorn |
 | `test_migrations.py` | RNF-13: base nueva por migraciones, modelos = migraciones, adopción de bases antiguas |
 | `test_restore_drill.py` | RNF-15: simulacro correcto, respaldo viejo, corrupto, ausente o incompleto |
-| `conftest.py` | Con `TEST_DATABASE_URL`, toda la suite contra ese motor; marca `sqlite_only` |
+| `test_legal.py` | RL-01/02/03/10/12: textos publicados, casilla obligatoria en registro e invitados, usuarios existentes, nueva versión, revocación, invitados vencidos, `LEGAL_*` obligatorias |
+| `conftest.py` | Con `TEST_DATABASE_URL`, toda la suite contra ese motor; marca `sqlite_only`. Da por autorizados a los usuarios de los fixtures, salvo en tests marcados `consent_gate` |
 
 ### 7.2 Patrón de fixture
 

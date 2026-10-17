@@ -53,10 +53,15 @@ def test_legacy_database_is_stamped_and_completed(tmp_path, monkeypatch):
         db.create_all()
         # Simula una base vieja: a users le falta una columna que ensure_schema agrega.
         db.session.execute(db.text('ALTER TABLE users DROP COLUMN institution'))
+        # Lo que agregaron migraciones posteriores a la base (0002) no existía en una base vieja.
+        db.session.execute(db.text('DROP TABLE consents'))
+        db.session.execute(db.text('ALTER TABLE users DROP COLUMN created_at'))
         db.session.execute(db.text("INSERT INTO users (username, email, role) VALUES ('viejo', 'viejo@example.com', 'student')"))
         db.session.commit()
     create_app()
     con = sqlite3.connect(path)
     assert con.execute('select version_num from alembic_version').fetchall() == [(_head(),)]
-    assert 'institution' in [r[1] for r in con.execute('pragma table_info(users)')]
+    columns = [r[1] for r in con.execute('pragma table_info(users)')]
+    assert 'institution' in columns and 'created_at' in columns
+    assert con.execute("select count(*) from sqlite_master where name='consents'").fetchone() == (1,)
     assert con.execute("select count(*) from users where email='viejo@example.com'").fetchone() == (1,)

@@ -125,11 +125,23 @@ class Config:
     PASSWORD_RESET_MAX_AGE = _env_int('PASSWORD_RESET_MAX_AGE', 30 * 60)
     PASSWORD_RESET_MAX_REQUESTS = _env_int('PASSWORD_RESET_MAX_REQUESTS', 3)   # por correo y hora
 
+    # Responsable del tratamiento de datos (Ley 1581 de 2012, RL-02). Aparecen en la política
+    # y en los términos; fuera de desarrollo la app no arranca sin ellos.
+    LEGAL_ENTITY_NAME = os.environ.get('LEGAL_ENTITY_NAME', '').strip()
+    LEGAL_ENTITY_ID = os.environ.get('LEGAL_ENTITY_ID', '').strip()          # NIT o cédula
+    LEGAL_CONTACT_EMAIL = os.environ.get('LEGAL_CONTACT_EMAIL', '').strip()  # canal de consultas y reclamos
+    LEGAL_ADDRESS = os.environ.get('LEGAL_ADDRESS', '').strip()
+    # Días tras los cuales scripts/anonymize_guests.py anonimiza invitados (RL-10).
+    GUEST_RETENTION_DAYS = _env_int('GUEST_RETENTION_DAYS', 90)
+
     # Orígenes permitidos para Socket.IO (coma-separados). Vacío = mismo origen.
     SOCKETIO_CORS_ORIGINS = [o.strip() for o in os.environ.get('SOCKETIO_CORS_ORIGINS', '').split(',') if o.strip()]
 
     # Detrás de Nginx / balanceador de GCP: confiar en X-Forwarded-* de N saltos.
     PROXY_FIX_HOPS = _env_int('PROXY_FIX_HOPS', 0 if APP_ENV == 'development' else 1)
+
+
+LEGAL_REQUIRED = ('LEGAL_ENTITY_NAME', 'LEGAL_ENTITY_ID', 'LEGAL_CONTACT_EMAIL', 'LEGAL_ADDRESS')
 
 
 def validate_config(config):
@@ -143,6 +155,9 @@ def validate_config(config):
     password = config.get('SUPERUSER_PASSWORD') or ''
     if len(password) < config.get('MIN_PASSWORD_LENGTH', 8) or is_leaked_secret(password):
         problems.append('SUPERUSER_PASSWORD (propia, mínimo %d caracteres)' % config.get('MIN_PASSWORD_LENGTH', 8))
+    missing_legal = [k for k in LEGAL_REQUIRED if not (config.get(k) or '').strip()]
+    if missing_legal:
+        problems.append('los datos del responsable del tratamiento (%s)' % ', '.join(missing_legal))
     if problems:
         raise RuntimeError(
             'Configuración insegura para APP_ENV=%s: define %s en el entorno.'

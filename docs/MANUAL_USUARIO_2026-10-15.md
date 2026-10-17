@@ -31,6 +31,8 @@
 | **Invitado** | **Ingresar con Código**: solo nombre y código de sala, sin cuenta | Presentar el examen de esa sala |
 | **Profesor / Instructor** | La crea el administrador. Si la plataforma tiene activo el auto-registro, también aparece la opción **Profesor / Instructor** en **Crear Cuenta** | Todo lo de la sección 3 |
 
+**Autorización de datos.** Para crear una cuenta o entrar como invitado debes marcar la casilla que acepta los [Términos y condiciones](/terminos) y autoriza el tratamiento de tus datos según la [Política de tratamiento de datos](/politica-de-datos) (Ley 1581 de 2012). Los enlaces están en esa casilla y al pie de cada página. Si ya tenías cuenta, o si los textos cambian, la plataforma te los mostrará una vez al entrar para que los aceptes; mientras tanto solo puedes ver tu perfil, descargar tus datos o eliminar tu cuenta.
+
 ### 1.3 Contraseña
 
 - Mínimo **8 caracteres**.
@@ -50,7 +52,8 @@ En el menú de tu usuario (arriba a la derecha) → **Mi perfil y mis datos** pu
 
 - **Ver y corregir** tu nombre, correo, teléfono e institución.
 - **Cambiar tu contraseña** (te pide la actual).
-- **Descargar mis datos:** un archivo con tu perfil, tus intentos de examen y respuestas, tu progreso en capacitaciones y tus votos.
+- **Descargar mis datos:** un archivo con tu perfil, tus intentos de examen y respuestas, tu progreso en capacitaciones, tus votos y el registro de tus autorizaciones.
+- **Ver y revocar tu autorización:** muestra qué versión de los términos aceptaste y cuándo. Para revocarla escribe `REVOCAR`; desde ese momento no podrás usar la plataforma hasta aceptarla de nuevo, pero sí descargar o eliminar tus datos.
 - **Eliminar mi cuenta:** borra tu nombre, correo, teléfono, institución y contraseña, y ya no podrás entrar. Tus respuestas en exámenes se conservan **sin identificarte**, para que el profesor no pierda las estadísticas del grupo. Escribe `ELIMINAR` y tu contraseña para confirmar. No se puede deshacer.
   - Si eres profesor y tienes exámenes o capacitaciones, la eliminación la hace el administrador: escríbele.
 
@@ -62,10 +65,10 @@ En el menú de tu usuario (arriba a la derecha) → **Mi perfil y mis datos** pu
 
 1. El profesor te da un **código de sala** de 6 caracteres, por ejemplo `K7Q2ZP`.
 2. Entra en **Unirse a Examen** (o **Ingresar con Código** si no has iniciado sesión).
-3. Escribe **Tu Nombre Completo** y el **Código de Sala**, y pulsa unirte.
+3. Escribe **Tu Nombre Completo** y el **Código de Sala**, marca la casilla de autorización de datos y pulsa **Entrar a la Sala**.
 4. Verás **"Esperando al profesor…"** hasta que el profesor inicie el examen.
 
-> Si entras como invitado, cada ingreso crea un registro nuevo: usa siempre el mismo nombre y no cierres la pestaña durante el examen.
+> Si entras como invitado, cada ingreso crea un registro nuevo: usa siempre el mismo nombre y no cierres la pestaña durante el examen. A los 90 días tu nombre se borra y tus respuestas quedan sin identificarte.
 
 ### 2.2 Presentar el examen
 
@@ -313,3 +316,5 @@ Conviene saberlo antes de usarla con nota real:
 **No me llega el correo para recuperar la contraseña.** Revisa spam y que escribiste el correo con el que te registraste. Si sigue sin llegar, el servidor de correo de la plataforma puede no estar configurado: avisa al administrador.
 
 **¿Quién ve mis resultados?** Solo tú, el profesor dueño del examen y el administrador.
+
+**¿Quién responde por mis datos y cómo hago un reclamo?** El responsable y su correo de contacto están en la [Política de tratamiento de datos](/politica-de-datos). Las consultas se responden en máximo 10 días hábiles y los reclamos en 15.

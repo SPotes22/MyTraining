@@ -90,9 +90,9 @@ Encontrados el 17 de octubre al escribir tests y al correrlos en PostgreSQL:
 
 **Seguridad y legal, sin resolver en código:**
 
-- **RL-01 a RL-12 (Ley 1581 de 2012):** falta la política de tratamiento, la casilla de autorización y el registro de consentimientos (la vista de derechos del titular, RF-029, ya existe). **Es lo que bloquea operar con datos reales**, más que cualquier punto técnico. Requiere texto validado por un abogado.
+- **RL-01 a RL-12 (Ley 1581 de 2012):** implementados el 17 oct: términos y política publicados, casilla obligatoria con registro (versión, fecha, IP), revocación, anonimización de invitados. **Falta lo que no es código:** validar los textos con un abogado, configurar los datos del responsable (`LEGAL_*`), decidir si habrá menores (RL-05) y designar a quien gestiona incidentes (RL-07).
 - **RF-028, recuperar contraseña:** implementado (17 oct); falta configurar el servidor de correo (`MAIL_*`) en pre-producción.
-- **RL-10, invitados:** cada ingreso por código crea un `User` nuevo que nunca se borra. Hace falta un trabajo periódico que los anonimice a los 90 días.
+- **RL-10, invitados:** `scripts/anonymize_guests.py` los anonimiza a los 90 días; hay que programarlo con cron (Manual de administrador §4.5).
 
 **Funcionales "Must", sin cambios en esta auditoría** (detalle en `SRS_2026-10-15.md`):
 
@@ -193,8 +193,8 @@ El SAD (ADR-003) ya prevé la migración sin tocar la lógica de negocio. La pre
 ```bash
 pytest                                   # 176 tests, cobertura con --cov=app
 TEST_DATABASE_URL=postgresql+psycopg://usuario@localhost/mytraining_test pytest   # misma suite en PostgreSQL
-APP_ENV=preproduction SECRET_KEY=<CLAVE> SUPERUSER_PASSWORD=<CLAVE> \
-  gunicorn -c gunicorn.conf.py wsgi:app  # arranque pre-producción (aplica migraciones)
+APP_ENV=preproduction SECRET_KEY=<CLAVE> SUPERUSER_PASSWORD=<CLAVE> LEGAL_ENTITY_NAME=... LEGAL_ENTITY_ID=... \
+  LEGAL_CONTACT_EMAIL=... LEGAL_ADDRESS=... gunicorn -c gunicorn.conf.py wsgi:app  # arranque pre-producción (aplica migraciones)
 curl localhost:8080/healthz              # {"status":"ok","env":"preproduction"}
 python scripts/backup_sqlite.py instance/database.db backups/
 python scripts/restore_drill.py backups/ --compare instance/database.db
@@ -202,7 +202,8 @@ python scripts/restore_drill.py backups/ --compare instance/database.db
 # Pruebas de carga (§4.1 y §4.2) — repetirlas en el host real antes de fijar el tamaño de sala.
 # Base desechable: seed_load.py la BORRA y la vuelve a crear.
 export LOADTEST_PASSWORD=$(python -c "import secrets; print(secrets.token_urlsafe(12))")
-export DATABASE_URL=sqlite:////tmp/load.db APP_ENV=preproduction SESSION_COOKIE_SECURE=0 SECRET_KEY=<CLAVE> SUPERUSER_PASSWORD=<CLAVE>
+export DATABASE_URL=sqlite:////tmp/load.db APP_ENV=preproduction SESSION_COOKIE_SECURE=0 SECRET_KEY=<CLAVE> SUPERUSER_PASSWORD=<CLAVE> \
+       LEGAL_ENTITY_NAME=Prueba LEGAL_ENTITY_ID=0 LEGAL_CONTACT_EMAIL=datos@example.com LEGAL_ADDRESS=Prueba
 SEED=$(python scripts/loadtest/seed_load.py 100 | tail -1)
 gunicorn -c gunicorn.conf.py wsgi:app &
 python scripts/loadtest/submit_burst.py http://127.0.0.1:8080 100 $SEED

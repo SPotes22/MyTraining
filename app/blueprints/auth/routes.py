@@ -2,10 +2,10 @@ import threading
 import time
 from datetime import datetime
 import json
-from flask import render_template, request, redirect, url_for, flash, current_app, Response
+from flask import render_template, request, redirect, url_for, flash, current_app, Response, jsonify
 from flask_login import login_user, logout_user, login_required, current_user
 from app.extensions import db
-from app.services import audit, password_reset, personal_data
+from app.services import audit, legal, password_reset, personal_data
 from app.services.mailer import send_mail
 from app.models import User, ExamSession, Bank
 from app.blueprints.auth import auth_bp
@@ -37,6 +37,74 @@ def _register_failed_login(email):
 def _clear_failed_logins(email):
     with _failed_lock:
         _failed_logins.pop(_login_key(email), None)
+
+
+# RL-01: quien no tiene una autorización vigente (versión actual, no revocada) solo puede ver
+# los textos legales, aceptarlos, consultar/exportar/suprimir sus datos o cerrar sesión.
+CONSENT_EXEMPT_ENDPOINTS = {
+    'static', 'healthz', 'auth.logout', 'auth.accept_terms', 'auth.terms', 'auth.privacy_policy',
+    'auth.profile', 'auth.export_my_data', 'auth.delete_my_account', 'auth.change_password',
+}
+
+
+@auth_bp.before_app_request
+def consent_gate():
+    if not current_user.is_authenticated or request.endpoint in CONSENT_EXEMPT_ENDPOINTS:
+        return None
+    if legal.has_current_consent(current_user):
+        return None
+    target = url_for('auth.accept_terms', next=request.full_path.rstrip('?') if request.method == 'GET' else None)
+    if request.method == 'GET' and '/api/' not in request.path:
+        return redirect(target)
+    return jsonify(error='Debes aceptar los términos y la política de tratamiento de datos.', redirect=target), 403
+
+
+def _safe_next(url):
+    return url if url and url.startswith('/') and not url.startswith('//') and '\\' not in url else None
+
+
+@auth_bp.route('/terminos')
+def terms():
+    return render_template('legal/terminos.html', version=legal.LEGAL_VERSION)
+
+
+@auth_bp.route('/politica-de-datos')
+def privacy_policy():
+    return render_template('legal/politica_datos.html', version=legal.LEGAL_VERSION)
+
+
+@auth_bp.route('/aceptar-terminos', methods=['GET', 'POST'])
+@login_required
+def accept_terms():
+    """Usuarios existentes, o tras un cambio de versión o una revocación: aceptar de nuevo."""
+    next_url = _safe_next(request.values.get('next'))
+    if legal.has_current_consent(current_user):
+        return redirect(next_url or url_for('auth.home'))
+    if request.method == 'POST':
+        if not legal.accepted_from_form(request.form):
+            flash('Para seguir usando la plataforma debes marcar la casilla de autorización.', 'warning')
+        else:
+            legal.record_consent(current_user, 'aceptacion')
+            db.session.commit()
+            flash('Gracias. Registramos tu autorización.', 'success')
+            return redirect(next_url or url_for('auth.home'))
+    return render_template('legal/aceptar.html', version=legal.LEGAL_VERSION, next_url=next_url,
+                           owns_content=personal_data.owns_content(current_user))
+
+
+@auth_bp.route('/perfil/revocar-autorizacion', methods=['POST'])
+@login_required
+def revoke_consent():
+    """RL-03: revocar la autorización. Sin ella no se puede usar la plataforma: la persona
+    puede volver a aceptar, o suprimir su cuenta desde la misma pantalla."""
+    if request.form.get('confirm', '').strip().upper() != 'REVOCAR':
+        flash('Para revocar tu autorización escribe REVOCAR en la casilla de confirmación.', 'warning')
+        return redirect(url_for('auth.profile'))
+    legal.revoke_consent(current_user)
+    db.session.commit()
+    flash('Revocaste tu autorización. Mientras no la otorgues de nuevo no podrás usar la plataforma; '
+          'si lo prefieres, puedes eliminar tu cuenta aquí abajo.', 'info')
+    return redirect(url_for('auth.accept_terms'))
 
 
 # RF-028: límite de solicitudes de recuperación por correo (en memoria, 1 worker).
@@ -135,6 +203,11 @@ def register():
             flash('Las contraseñas no coinciden.', 'warning')
             return render_template('register.html', form_data=request.form)
 
+        if not legal.accepted_from_form(request.form):
+            # RL-01: autorización previa, expresa e informada; la casilla no viene marcada.
+            flash('Debes aceptar los términos y autorizar el tratamiento de tus datos para crear la cuenta.', 'warning')
+            return render_template('register.html', form_data=request.form)
+
         # Determinar rol (estudiante o profesor/instructor)
         role = 'instructor' if role_raw in ['instructor', 'profesor', 'teacher', 'docente'] else 'student'
         if role == 'instructor' and not current_app.config.get('ALLOW_INSTRUCTOR_SIGNUP'):
@@ -161,6 +234,7 @@ def register():
         new_user.set_password(password)
         db.session.add(new_user)
         db.session.flush()  # asigna new_user.id sin cerrar la transacción
+        legal.record_consent(new_user, 'registro')
 
         if new_user.role == 'instructor':
             default_bank = Bank(
@@ -262,7 +336,8 @@ def profile():
         db.session.commit()
         flash('Tus datos se actualizaron.', 'success')
         return redirect(url_for('auth.profile'))
-    return render_template('profile.html', owns_content=personal_data.owns_content(current_user))
+    return render_template('profile.html', owns_content=personal_data.owns_content(current_user),
+                           consent=legal.current_consent(current_user))
 
 
 @auth_bp.route('/perfil/contrasena', methods=['POST'])
@@ -333,6 +408,10 @@ def student_join_exam():
             flash('Debes ingresar tu nombre y un código de examen válido.', 'warning')
             return redirect(url_for('auth.student_join_exam'))
 
+        if not legal.accepted_from_form(request.form):
+            flash('Debes aceptar los términos y autorizar el tratamiento de tus datos para entrar a la sala.', 'warning')
+            return redirect(url_for('auth.student_join_exam'))
+
         session_obj = ExamSession.query.filter_by(session_code=code).first()
         if not session_obj:
             flash('Código de examen no encontrado.', 'danger')
@@ -344,6 +423,8 @@ def student_join_exam():
 
         user = User(username=student_name, role='student')
         db.session.add(user)
+        db.session.flush()
+        legal.record_consent(user, 'invitado')
         db.session.commit()
         login_user(user)
 

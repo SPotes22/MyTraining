@@ -19,6 +19,7 @@ Plataforma Flask (SSR con Jinja2) + Socket.IO + SQLite para capacitaciones y ex�
 - "Pregunta respondida" se define en dos sitios que deben coincidir: `isStepAnswered` (JS) y `unanswered_question_ids` (servidor, RN-14).
 - Cambio de modelo = migración nueva (`flask --app run db migrate -m "..."`, revísala); `ensure_schema` es solo para bases antiguas. Ids del formulario como enteros (`getlist(..., type=int)`): el CI también corre en PostgreSQL.
 - Logs con `logging.getLogger(__name__)` y `extra={'event': ...}`, nunca `print`; personas solo por id.
+- Flujos que crean usuarios: casilla de autorización obligatoria y `legal.record_consent` (RL-01). Cambiar `templates/legal/` = subir `LEGAL_VERSION`. Todo endpoint queda detrás de `consent_gate`; en tests, `conftest.py` da por autorizados a los usuarios salvo con `@pytest.mark.consent_gate`.
 - Subidas solo con `services/uploads.py`; todo `socketio.emit` con `to=`; escrituras concurrentes frecuentes con `write_lock` (válido por el worker único). Cada websocket ocupa un hilo: `GUNICORN_THREADS` es el tope de conectados.
 
 Comandos: `pip install -r requirements-dev.txt` · `pre-commit install` (escaneo de secretos con ggshield; requiere `GITGUARDIAN_API_KEY`, nunca lo saltes con `--no-verify`) · `pytest` (debe quedar en verde; el CI exige cobertura ≥ 70 % y corre también en PostgreSQL) · `python run.py` (dev).

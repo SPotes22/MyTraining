@@ -13,6 +13,17 @@ TEST_DATABASE_URL = os.environ.get('TEST_DATABASE_URL')
 
 def pytest_configure(config):
     config.addinivalue_line('markers', 'sqlite_only: el test usa el archivo SQLite directamente')
+    config.addinivalue_line('markers', 'consent_gate: el test ejercita la exigencia de autorización (RL-01)')
+
+
+@pytest.fixture(autouse=True)
+def _consent_given(request, monkeypatch):
+    """Los fixtures crean usuarios directamente en la base, sin pasar por la casilla de
+    autorización. Salvo en los tests marcados `consent_gate`, se dan por autorizados."""
+    if 'consent_gate' in request.keywords:
+        return
+    from app.services import legal
+    monkeypatch.setattr(legal, 'has_current_consent', lambda user: True)
 
 
 def pytest_collection_modifyitems(config, items):

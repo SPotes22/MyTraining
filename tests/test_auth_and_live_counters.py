@@ -49,6 +49,7 @@ def test_register_student_success(app_ctx):
 
     # POST student registration
     payload = {
+        'accept_terms': 'on',
         'first_name': 'Carlos',
         'last_name': 'Gomez',
         'email': 'carlos.gomez@test.com',
@@ -79,6 +80,8 @@ def test_register_instructor_success(app_ctx):
     client = app.test_client()
 
     payload = {
+
+        'accept_terms': 'on',
         'first_name': 'Maria',
         'last_name': 'Rodriguez',
         'email': 'maria.profesora@test.com',
@@ -113,6 +116,7 @@ def test_register_two_instructors_each_get_their_own_default_bank(app_ctx):
 
     for idx, email in enumerate(['prof.a@test.com', 'prof.b@test.com']):
         payload = {
+            'accept_terms': 'on',
             'first_name': f'Prof{idx}',
             'last_name': 'Test',
             'email': email,
@@ -138,6 +142,7 @@ def test_register_validation_duplicate_email_and_password_mismatch(app_ctx):
 
     # 1. Duplicate email test
     payload_dup = {
+        'accept_terms': 'on',
         'first_name': 'Otro',
         'last_name': 'Profesor',
         'email': 'teacher@example.com', # already exists
@@ -151,6 +156,7 @@ def test_register_validation_duplicate_email_and_password_mismatch(app_ctx):
 
     # 2. Mismatched passwords
     payload_mismatch = {
+        'accept_terms': 'on',
         'first_name': 'Ana',
         'last_name': 'Lopez',
         'email': 'ana.lopez@test.com',

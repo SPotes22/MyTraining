@@ -1107,6 +1107,8 @@
         .btn-outline-info { --bs-btn-color: #087990; --bs-btn-border-color: #087990; --bs-btn-hover-bg: #087990; --bs-btn-hover-border-color: #087990; --bs-btn-hover-color: #fff; }
         .bg-purple-subtle { background-color: #ede9fe !important; }
         .text-purple { color: #5b21b6 !important; }
+        /* RNF-11 (1.4.1): un enlace dentro de un texto no puede distinguirse solo por el color. */
+        .legal-text a, .app-main p a:not(.btn), .form-check-label a { text-decoration: underline; }
         .text-success { color: #146c43 !important; }
         /* RNF-11 (2.4.7): foco visible al navegar con teclado en enlaces, botones y controles propios. */
         a:focus-visible, button:focus-visible, .btn:focus-visible, [tabindex]:focus-visible,
@@ -1446,6 +1448,14 @@
         </div>
 
     </main>
+
+    {% block legal_footer %}
+    {# RL-02: los textos legales a un clic desde cualquier página. #}
+    <footer class="container text-center small text-muted py-4">
+        <a href="{{ url_for('auth.terms') }}" class="text-muted me-3">Términos y condiciones</a>
+        <a href="{{ url_for('auth.privacy_policy') }}" class="text-muted">Política de tratamiento de datos</a>
+    </footer>
+    {% endblock %}
 
 
     <!-- =========================================================
