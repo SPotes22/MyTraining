@@ -6,3 +6,6 @@ pre-commit==4.7.0
 # CLI de GitGuardian para `ggshield auth login` y escaneos manuales; el hook de
 # pre-commit usa su propia copia aislada de la misma versión.
 ggshield==1.56.0
+# Cliente Socket.IO para scripts/loadtest/room_events.py (RNF-09)
+requests==2.32.5
+websocket-client==1.8.0

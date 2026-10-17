@@ -1,5 +1,7 @@
 import logging
-from flask import request
+import threading
+import time
+from flask import current_app, request
 from flask_login import current_user
 from flask_socketio import emit, join_room
 from app.extensions import db, socketio
@@ -8,6 +10,7 @@ from app.modes import registry
 from app.realtime import events
 from app.realtime.manager import session_manager
 from app.services.exam_content import normalize_room_code, socket_room
+from app.services.write_lock import sqlite_write_lock
 
 log = logging.getLogger(__name__)
 
@@ -39,6 +42,41 @@ def _emit_students(session):
     _emit_teacher_stats_update(session)
 
 
+# RNF-09: con 100 estudiantes respondiendo a la vez, mandar al profesor la lista completa
+# en cada respuesta es O(N²) y retrasaba los eventos de sala. Se envía como máximo una
+# vez cada STUDENTS_THROTTLE_SECONDS por sala; la última siempre llega (envío diferido).
+STUDENTS_THROTTLE_SECONDS = 0.5
+_throttle_lock = threading.Lock()
+_last_students_emit = {}
+_pending_students_emit = set()
+
+
+def _emit_students_throttled(session):
+    key = session.room_code
+    with _throttle_lock:
+        if key in _pending_students_emit:
+            return
+        wait = _last_students_emit.get(key, 0) + STUDENTS_THROTTLE_SECONDS - time.monotonic()
+        if wait <= 0:
+            _last_students_emit[key] = time.monotonic()
+        else:
+            _pending_students_emit.add(key)
+    if wait <= 0:
+        _emit_students(session)
+        return
+    app = current_app._get_current_object()
+
+    def deferred():
+        socketio.sleep(wait)
+        with _throttle_lock:
+            _pending_students_emit.discard(key)
+            _last_students_emit[key] = time.monotonic()
+        with app.app_context():
+            _emit_students(session)
+
+    socketio.start_background_task(deferred)
+
+
 def _emit_teacher_stats_update(session=None, instructor_id=None):
     try:
         if not instructor_id and session:
@@ -51,7 +89,7 @@ def _emit_teacher_stats_update(session=None, instructor_id=None):
             summary = get_instructor_active_sessions_summary(instructor_id)
             socketio.emit('teacher_live_stats_updated', summary,
                           to=f"teacher_{instructor_id}")
-    except Exception as e:
+    except Exception:
         log.exception('Error actualizando stats del profesor', extra={'event': 'room.stats_error'})
 
 
@@ -111,7 +149,7 @@ def handle_student_join(data):
     session, student = result
     join_room(socket_room(room_code))
     log.info('Estudiante entra a sala', extra={'event': 'room.student_join', 'room': room_code, 'user_id': student.id})
-    _emit_students(session)
+    _emit_students_throttled(session)
 
     # Restaurar respuestas guardadas (LiveAnswer) para que la UI las precargue
     db_session = DbExamSession.query.filter_by(session_code=room_code).first()
@@ -217,24 +255,26 @@ def handle_answer_submitted(data):
     # ── Persistir LiveAnswer (upsert) ────────────────────────────────────────
     try:
         db_session = DbExamSession.query.filter_by(session_code=room_code).first()
-        if db_session:
-            existing = LiveAnswer.query.filter_by(
-                session_id=db_session.id,
-                student_id=int(student_id),
-                question_id=question_id,
-            ).first()
-            if existing:
-                existing.answer_json = answer
-                existing.answered_at = db.func.now()
-            else:
-                db.session.add(LiveAnswer(
+        # Fila en el proceso para el escritor único de SQLite (ver write_lock.py).
+        with sqlite_write_lock():
+            if db_session:
+                existing = LiveAnswer.query.filter_by(
                     session_id=db_session.id,
                     student_id=int(student_id),
                     question_id=question_id,
-                    answer_json=answer,
-                ))
-            db.session.commit()
-    except Exception as e:
+                ).first()
+                if existing:
+                    existing.answer_json = answer
+                    existing.answered_at = db.func.now()
+                else:
+                    db.session.add(LiveAnswer(
+                        session_id=db_session.id,
+                        student_id=int(student_id),
+                        question_id=question_id,
+                        answer_json=answer,
+                    ))
+                db.session.commit()
+    except Exception:
         db.session.rollback()
         log.exception('No se guardó la respuesta en vivo', extra={'event': 'room.live_answer_error', 'room': room_code})
 
@@ -251,11 +291,10 @@ def handle_answer_submitted(data):
                 'room_code': room_code,
                 'answered_count': len(student.answered_questions),
             }, to=f"teacher_{db_session.exam.instructor_id}")
-    except Exception as e:
+    except Exception:
         log.exception('No se notificó la respuesta al profesor', extra={'event': 'room.notify_error', 'room': room_code})
     
-    _emit_students(session)
-    
+    _emit_students_throttled(session)
 
 
 # ── Next question (teacher_paced) ────────────────────────────────────────────
@@ -297,6 +336,6 @@ def handle_disconnect():
     session, role, student_id = info
     if role == 'student':
         log.info('Estudiante sale de sala', extra={'event': 'room.student_leave', 'room': session.room_code, 'user_id': student_id})
-        _emit_students(session)
+        _emit_students_throttled(session)
     else:
         log.info('Profesor sale de sala', extra={'event': 'room.teacher_leave', 'room': session.room_code})

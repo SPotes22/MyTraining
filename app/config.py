@@ -40,6 +40,7 @@ LEAKED_SECRET_SHA256 = frozenset({
     '8491107a0633480aafe6c324864df6ae92130218dded78061c8975f86e9dd10e',
     'ac9689e2272427085e35b9d3e3e8bed88cb3434828b43b86fc0596cad4c6e270',
     '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9',
+    'fcf730b6d95236ecd3c9fc2d92d7b6b2bb061514961aec041d6c7a7192f592e4',  # clave fija de scripts/loadtest (historial de git)
 })
 
 

@@ -10,18 +10,24 @@ Vale porque hay exactamente un worker de Gunicorn (CLAUDE.md). Con PostgreSQL no
 aplica: ahí las escrituras concurrentes sí escalan.
 """
 import threading
+from contextlib import nullcontext
 from functools import wraps
 
 from flask import current_app
 
-_lock = threading.Lock()
+_lock = threading.RLock()  # reentrante: una vista serializada puede llamar código que también lo pide
+
+
+def sqlite_write_lock():
+    """Context manager: el candado del proceso si la base es SQLite; nada en otro caso."""
+    if str(current_app.config.get('SQLALCHEMY_DATABASE_URI', '')).startswith('sqlite'):
+        return _lock
+    return nullcontext()
 
 
 def serialize_on_sqlite(view):
     @wraps(view)
     def wrapper(*args, **kwargs):
-        if not str(current_app.config.get('SQLALCHEMY_DATABASE_URI', '')).startswith('sqlite'):
-            return view(*args, **kwargs)
-        with _lock:
+        with sqlite_write_lock():
             return view(*args, **kwargs)
     return wrapper

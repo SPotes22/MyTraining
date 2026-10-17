@@ -10,7 +10,10 @@ bind = f"0.0.0.0:{os.environ.get('PORT', '8080')}"
 # La concurrencia se obtiene con hilos (Flask-SocketIO en modo threading + simple-websocket).
 workers = 1
 worker_class = 'gthread'
-threads = int(os.environ.get('GUNICORN_THREADS', '64'))
+# Cada websocket abierto ocupa un hilo mientras dura la conexión: este número es el TOPE
+# de estudiantes conectados a la vez (más ~30 para peticiones HTTP). Con 64 solo
+# entraban 64 estudiantes (medido, RNF-09). 256 hilos ociosos cuestan poca memoria.
+threads = int(os.environ.get('GUNICORN_THREADS', '256'))
 
 # Los websockets son conexiones largas; no matar el worker por inactividad.
 timeout = 0
