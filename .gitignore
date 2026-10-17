@@ -20,3 +20,6 @@ app/static/uploads/
 instance/
 *.db-wal
 *.db-shm
+
+# Added by ggshield
+.cache_ggshield
