@@ -361,9 +361,9 @@
                                 </div>
                                 {% endif %}
 
-                                {% if q.video_url %}
+                                {% set cue = q.video_cue if q.video_url else None %}
+                                {% if cue %}
                                 <div class="mb-3">
-                                    {% set cue = q.video_cue %}
                                     {% if cue.has_cue %}
                                       <div class="small text-muted mb-2">
                                         <i class="bi bi-stopwatch me-1 text-primary"></i>La pregunta apareció en <strong>{{ cue.question_at_label }}</strong> del video{% if cue.pause_on_question %} (con pausa automática){% endif %}.

@@ -16,6 +16,18 @@ from app.services.video_cues import (cue_wait_seconds, learning_video_player, ma
 ALLOWED_EXTENSIONS = {'jpg', 'jpeg', 'png', 'webp', 'gif', 'mp4', 'webm', 'pdf', 'mp3'}
 # El tope de tamaño se aplica globalmente con Config.MAX_CONTENT_LENGTH (MAX_UPLOAD_MB).
 
+def _can_edit_learning(learning):
+    """El autor de la capacitación o un administrador. Las rutas /api/* del editor la exigen:
+    antes cualquier usuario con sesión (incluidos invitados) podía modificar cursos ajenos."""
+    if current_user.role in ['admin', 'superuser']:
+        return True
+    return current_user.role == 'instructor' and learning.autor_id == current_user.id
+
+
+def _forbidden():
+    return jsonify({'error': 'Acceso no autorizado'}), 403
+
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -213,6 +225,8 @@ def api_create_module():
     titulo = request.form.get('titulo', 'Nuevo Módulo').strip()
     
     learning = Learning.query.get_or_404(learning_id)
+    if not _can_edit_learning(learning):
+        return _forbidden()
     max_order = db.session.query(db.func.max(LearningModule.orden)).filter_by(learning_id=learning_id).scalar() or 0
 
     new_mod = LearningModule(
@@ -243,6 +257,8 @@ def api_create_module():
 @login_required
 def api_update_module(module_id):
     mod = LearningModule.query.get_or_404(module_id)
+    if not _can_edit_learning(mod.learning):
+        return _forbidden()
     mod.titulo = request.form.get('titulo', mod.titulo).strip()
     mod.descripcion = request.form.get('descripcion', mod.descripcion).strip()
     db.session.commit()
@@ -253,6 +269,8 @@ def api_update_module(module_id):
 @login_required
 def api_delete_module(module_id):
     mod = LearningModule.query.get_or_404(module_id)
+    if not _can_edit_learning(mod.learning):
+        return _forbidden()
     db.session.delete(mod)
     db.session.commit()
     return jsonify({'success': True})
@@ -265,6 +283,8 @@ def api_create_lesson():
     titulo = request.form.get('titulo', 'Nueva Lección').strip()
 
     mod = LearningModule.query.get_or_404(module_id)
+    if not _can_edit_learning(mod.learning):
+        return _forbidden()
     max_order = db.session.query(db.func.max(Lesson.orden)).filter_by(module_id=module_id).scalar() or 0
 
     new_les = Lesson(
@@ -285,6 +305,8 @@ def api_create_lesson():
 @login_required
 def api_update_lesson(lesson_id):
     les = Lesson.query.get_or_404(lesson_id)
+    if not _can_edit_learning(les.module.learning):
+        return _forbidden()
     les.titulo = request.form.get('titulo', les.titulo).strip()
     les.descripcion = request.form.get('descripcion', les.descripcion).strip()
     db.session.commit()
@@ -295,6 +317,8 @@ def api_update_lesson(lesson_id):
 @login_required
 def api_delete_lesson(lesson_id):
     les = Lesson.query.get_or_404(lesson_id)
+    if not _can_edit_learning(les.module.learning):
+        return _forbidden()
     db.session.delete(les)
     db.session.commit()
     return jsonify({'success': True})
@@ -307,6 +331,8 @@ def api_create_block():
     tipo = request.form.get('tipo', 'text')
 
     les = Lesson.query.get_or_404(lesson_id)
+    if not _can_edit_learning(les.module.learning):
+        return _forbidden()
     max_order = db.session.query(db.func.max(Block.orden)).filter_by(lesson_id=lesson_id).scalar() or 0
 
     cfg = learning_service.default_block_config(tipo)
@@ -338,6 +364,8 @@ def api_create_block():
 @login_required
 def api_update_block(block_id):
     block = Block.query.get_or_404(block_id)
+    if not _can_edit_learning(block.lesson.module.learning):
+        return _forbidden()
     
     if 'visible' in request.form:
         block.visible = request.form.get('visible') in ['true', '1', 'True']
@@ -369,6 +397,8 @@ def api_update_block(block_id):
 @login_required
 def api_delete_block(block_id):
     block = Block.query.get_or_404(block_id)
+    if not _can_edit_learning(block.lesson.module.learning):
+        return _forbidden()
     db.session.delete(block)
     db.session.commit()
     return jsonify({'success': True})
@@ -378,6 +408,8 @@ def api_delete_block(block_id):
 @login_required
 def api_duplicate_block(block_id):
     original = Block.query.get_or_404(block_id)
+    if not _can_edit_learning(original.lesson.module.learning):
+        return _forbidden()
     max_order = db.session.query(db.func.max(Block.orden)).filter_by(lesson_id=original.lesson_id).scalar() or 0
 
     new_block = Block(
@@ -406,9 +438,11 @@ def api_duplicate_block(block_id):
 @learning_bp.route('/api/block/reorder', methods=['POST'])
 @login_required
 def api_reorder_blocks():
-    block_ids = request.json.get('block_ids', [])
-    for idx, b_id in enumerate(block_ids, 1):
-        blk = Block.query.get(b_id)
+    block_ids = (request.json or {}).get('block_ids', [])
+    blocks = [Block.query.get(b_id) for b_id in block_ids]
+    if any(blk and not _can_edit_learning(blk.lesson.module.learning) for blk in blocks):
+        return _forbidden()
+    for idx, blk in enumerate(blocks, 1):
         if blk:
             blk.orden = idx
     db.session.commit()
@@ -538,6 +572,9 @@ def _student_lesson_blocks(lesson, block_answers):
 def api_video_cue_block(block_id):
     """RF-011: entrega una pregunta de video cuando ya pasó su minuto (sin respuestas correctas)."""
     block = Block.query.get_or_404(block_id)
+    learning = block.lesson.module.learning
+    if learning.estado != 'published' and not _can_edit_learning(learning):
+        return jsonify({'error': 'Esta capacitación no está publicada.'}), 404
     if block.tipo != 'question':
         return jsonify({'error': 'El bloque no es una pregunta.'}), 400
     cue = _find_video_cue(block)

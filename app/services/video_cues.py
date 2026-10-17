@@ -67,10 +67,20 @@ def format_timestamp(seconds):
     return f'{minutes}:{secs:02d}'
 
 
-def parse_video_source(url):
-    """Detecta el proveedor del video y arma la URL embebible."""
+def is_safe_video_url(url):
+    """Solo enlaces http(s) o rutas propias ("/static/..."). La URL termina en el `src` de un
+    <iframe>/<video>: un esquema como `javascript:` o `data:` ejecutaría código en la página."""
     url = (url or '').strip()
-    if not url:
+    parsed = urlparse(url)
+    if parsed.scheme in ('http', 'https'):
+        return bool(parsed.netloc)
+    return not parsed.scheme and not parsed.netloc and url.startswith('/') and not url.startswith('//')
+
+
+def parse_video_source(url):
+    """Detecta el proveedor del video y arma la URL embebible. URL vacía o insegura → None."""
+    url = (url or '').strip()
+    if not url or not is_safe_video_url(url):
         return None
     parsed = urlparse(url)
     host = (parsed.netloc or '').lower()
@@ -112,9 +122,12 @@ def parse_video_source(url):
 
 def build_video_metadata(video_url, start=None, question_at=None, pause_on_question=True):
     """Valida los tiempos y arma el JSON de metadatos. Sin video → None."""
+    if not (video_url or '').strip():
+        return None
     source = parse_video_source(video_url)
     if not source:
-        return None
+        raise ValueError('URL de video no válida: usa un enlace https:// (YouTube, Vimeo, MP4) '
+                         'o un archivo propio que empiece con /static/.')
     start = parse_timestamp(start) or 0
     question_at = parse_timestamp(question_at)
     if question_at is not None and question_at <= start:
@@ -139,7 +152,8 @@ def resolve_video_metadata(video_url, video_metadata=None, video_timestamp=None)
     Metadatos listos para las plantillas. Si la pregunta es anterior a RF-011
     (sin JSON) se reconstruyen a partir de `video_url` y `video_timestamp`.
     """
-    if not video_url:
+    if not video_url or not is_safe_video_url(video_url):
+        # Una URL insegura guardada antes de esta validación no se renderiza.
         return None
     meta = dict(video_metadata) if isinstance(video_metadata, dict) else None
     if not meta or meta.get('source_url') != video_url.strip():
@@ -206,6 +220,9 @@ def cue_wait_seconds(key, start, question_at):
 def normalize_learning_video_cues(cfg, lesson_blocks):
     """Valida `start`/`cues` de un bloque de video contra los bloques de su lección."""
     cfg = dict(cfg or {})
+    if cfg.get('url') and not is_safe_video_url(cfg['url']):
+        raise ValueError('URL de video no válida: usa un enlace https:// (YouTube, Vimeo, MP4) '
+                         'o un archivo propio que empiece con /static/.')
     start = parse_timestamp(cfg.get('start')) or 0
     cues_in = cfg.get('cues') or []
     if not isinstance(cues_in, list):

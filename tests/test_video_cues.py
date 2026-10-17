@@ -6,6 +6,7 @@ import pytest
 from werkzeug.datastructures import MultiDict
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from support import TEST_PASSWORD  # noqa: E402
 from app import create_app
 from app.config import Config
 from app.extensions import db
@@ -104,9 +105,9 @@ def app_ctx(tmp_path):
         db.drop_all()
         db.create_all()
         teacher = User(username='Profe', email='profe@example.com', role='instructor')
-        teacher.set_password('secret')
+        teacher.set_password(TEST_PASSWORD)
         student = User(username='Julio', email='julio@example.com', role='student')
-        student.set_password('secret')
+        student.set_password(TEST_PASSWORD)
         db.session.add_all([teacher, student])
         db.session.commit()
         bank = Bank(name='Banco Video', created_by=teacher.id)
@@ -187,7 +188,7 @@ def test_snapshot_and_duplicate_keep_cue(app_ctx):
 
 def _login(app, email):
     client = app.test_client()
-    client.post('/login', data={'email': email, 'password': 'secret'})
+    client.post('/login', data={'email': email, 'password': TEST_PASSWORD})
     return client
 
 
@@ -378,3 +379,113 @@ def test_learning_duplicate_and_import_remap_cues(app_ctx):
         assert cue_points_to_question(learning_service.duplicate_learning(learning.id, teacher.id))
         exported = json.loads(json.dumps(learning_service.export_learning_json(learning.id)))
         assert cue_points_to_question(learning_service.import_learning_json(exported, teacher.id))
+
+
+# ── Correcciones de la revisión (17 oct 2026) ───────────────────────────────
+
+@pytest.mark.parametrize('url', ['javascript:alert(1)', 'JavaScript:alert(1)', 'data:text/html,<b>x</b>',
+                                 '//evil.example/x.mp4', 'vbscript:msgbox(1)'])
+def test_unsafe_video_urls_are_rejected(app_ctx, url):
+    app, *_ = app_ctx
+    with app.app_context():
+        assert video_cues.is_safe_video_url(url) is False
+        assert video_cues.parse_video_source(url) is None
+        with pytest.raises(ValueError):
+            video_cues.build_video_metadata(url)
+        # Una URL insegura guardada antes de la validación no se renderiza.
+        assert video_cues.resolve_video_metadata(url) is None
+        with pytest.raises(ValueError):
+            video_cues.normalize_learning_video_cues({'url': url}, [])
+
+
+@pytest.mark.parametrize('url', ['https://youtu.be/dQw4w9WgXcQ', 'http://example.com/clase.mp4',
+                                 '/static/uploads/learning/clase.mp4'])
+def test_safe_video_urls_are_accepted(app_ctx, url):
+    app, *_ = app_ctx
+    with app.app_context():
+        assert video_cues.is_safe_video_url(url) is True
+        assert video_cues.build_video_metadata(url)['source_url'] == url
+
+
+def test_question_form_rejects_javascript_video_url(app_ctx):
+    app, teacher, student, bank = app_ctx
+    with app.app_context():
+        q = Question(bank_id=bank.id)
+        with pytest.raises(ValueError):
+            # Sin tiempos: debe rechazarse solo por el esquema de la URL.
+            save_question_payload(q, _video_form(video_url='javascript:alert(document.cookie)',
+                                                 video_start='', video_question_at=''))
+
+
+def test_learning_editor_api_requires_owner(app_ctx):
+    """Antes cualquier usuario con sesión podía editar, borrar o reordenar bloques ajenos."""
+    app, teacher, student, bank = app_ctx
+    with app.app_context():
+        learning, lesson, video, question, text = _lesson_with_video(teacher)
+        ids = dict(learning=learning.id, module=lesson.module_id, lesson=lesson.id,
+                   video=video.id, question=question.id, text=text.id)
+        other = User(username='Otro', email='otro@example.com', role='instructor')
+        other.set_password(TEST_PASSWORD)
+        db.session.add(other)
+        db.session.commit()
+
+    attempts = [
+        ('/learning/api/module/create', {'learning_id': ids['learning']}),
+        (f"/learning/api/module/update/{ids['module']}", {'titulo': 'x'}),
+        ('/learning/api/lesson/create', {'module_id': ids['module']}),
+        (f"/learning/api/lesson/update/{ids['lesson']}", {'titulo': 'x'}),
+        ('/learning/api/block/create', {'lesson_id': ids['lesson'], 'tipo': 'text'}),
+        (f"/learning/api/block/update/{ids['text']}", {'configuracion': json.dumps({'content': 'hackeado'})}),
+        (f"/learning/api/block/duplicate/{ids['text']}", {}),
+        (f"/learning/api/block/delete/{ids['text']}", {}),
+        (f"/learning/api/lesson/delete/{ids['lesson']}", {}),
+        (f"/learning/api/module/delete/{ids['module']}", {}),
+    ]
+    for email in ('julio@example.com', 'otro@example.com'):
+        client = _login(app, email)
+        for url, data in attempts:
+            assert client.post(url, data=data).status_code == 403, (email, url)
+        assert client.post('/learning/api/block/reorder', json={'block_ids': [ids['text'], ids['video']]}).status_code == 403
+
+    with app.app_context():
+        assert db.session.get(Block, ids['text']).configuracion == {'content': 'x'}
+        assert db.session.get(Lesson, ids['lesson']) is not None
+
+    # El autor sí puede.
+    owner = _login(app, 'profe@example.com')
+    assert owner.post(f"/learning/api/block/update/{ids['text']}",
+                      data={'configuracion': json.dumps({'content': 'nuevo'})}).status_code == 200
+
+
+def test_learning_video_block_rejects_unsafe_url(app_ctx):
+    app, teacher, student, bank = app_ctx
+    with app.app_context():
+        _, _, video, _, _ = _lesson_with_video(teacher)
+        video_id = video.id
+    res = _login(app, 'profe@example.com').post(
+        f'/learning/api/block/update/{video_id}',
+        data={'configuracion': json.dumps({'url': 'javascript:alert(1)', 'cues': []})})
+    assert res.status_code == 400
+
+
+def test_learning_cue_endpoint_hides_unpublished_courses(app_ctx):
+    app, teacher, student, bank = app_ctx
+    with app.app_context():
+        _, _, _, question, _ = _lesson_with_video(teacher, estado='draft')
+        question_id = question.id
+    assert _login(app, 'julio@example.com').get(
+        f'/learning/api/block/{question_id}/video-question').status_code == 404
+    # El autor puede previsualizar su borrador.
+    assert _login(app, 'profe@example.com').get(
+        f'/learning/api/block/{question_id}/video-question').status_code == 200
+
+
+def test_exam_cue_endpoint_closed_session(app_ctx):
+    """RN-12: una sala finalizada ya no entrega preguntas."""
+    app, teacher, student, bank = app_ctx
+    with app.app_context():
+        q, session = _exam_with_video_question(teacher, bank)
+        session.status = 'FINISHED'
+        db.session.commit()
+        url = f'/exam/presentar/{session.id}/video-question/{q.id}'
+    assert _login(app, 'julio@example.com').get(url).status_code == 410

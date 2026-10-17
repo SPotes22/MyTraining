@@ -236,6 +236,9 @@ def video_cue_question(session_id, question_id):
     ya pasó el tiempo de video correspondiente (o si el estudiante ya la respondió).
     """
     session_obj = ExamSession.query.get_or_404(session_id)
+    if session_obj.status in ['finished', 'FINISHED', 'closed', 'CLOSED']:
+        # RN-12: una sala finalizada no entrega preguntas (ni admite envíos).
+        return jsonify({'error': 'Esta sala ya finalizó.'}), 410
     eq = ExamQuestion.query.get((session_obj.exam_id, question_id))
     if not eq:
         return jsonify({'error': 'La pregunta no pertenece a este examen.'}), 404

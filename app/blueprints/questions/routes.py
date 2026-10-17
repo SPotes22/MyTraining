@@ -233,8 +233,13 @@ def import_questions_excel():
                         question_at=cue_at if pd.notna(cue_at) else None,
                     )
                 except ValueError:
-                    question.video_metadata = build_video_metadata(video_url)
-                question.video_timestamp = question.video_metadata['question_at']
+                    # Tiempos inválidos: se conserva el video sin cue. URL insegura: se descarta.
+                    try:
+                        question.video_metadata = build_video_metadata(video_url)
+                    except ValueError:
+                        question.video_url = None
+                        question.video_metadata = None
+                question.video_timestamp = (question.video_metadata or {}).get('question_at')
             db.session.add(question)
             db.session.flush()
 
