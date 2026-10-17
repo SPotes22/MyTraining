@@ -153,7 +153,8 @@ def bulk_delete_questions():
     if current_user.role != 'instructor':
         return "Acceso denegado", 403
     
-    question_ids = request.form.getlist('question_ids[]')
+    # Enteros: PostgreSQL rechaza comparar id (integer) con texto; SQLite lo aceptaba.
+    question_ids = request.form.getlist('question_ids[]', type=int)
     if not question_ids:
         flash('No seleccionaste preguntas para eliminar.', 'warning')
         return redirect(url_for('questions.mis_preguntas'))

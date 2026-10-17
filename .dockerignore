@@ -12,3 +12,5 @@ app/static/uploads/
 tests/
 docs/
 server.log
+node_modules/
+scripts/a11y/

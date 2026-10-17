@@ -1,0 +1,12 @@
+Migraciones de base de datos (Alembic vía Flask-Migrate) — RNF-13.
+
+La app aplica las migraciones pendientes al arrancar (create_app -> init_db -> migrate_schema).
+Una base creada antes de Alembic (create_all + ensure_schema) se completa y se marca en 0001.
+
+Cambiar un modelo:
+  flask --app run db migrate -m "describe el cambio"   # genera migrations/versions/NNNN_*.py
+  revisa el archivo generado (Alembic no detecta renombres ni todos los cambios de tipo)
+  pytest                                               # tests/test_migrations.py verifica que no falte ninguna
+  flask --app run db upgrade                           # o simplemente reinicia la app
+
+Probar contra PostgreSQL: TEST_DATABASE_URL=postgresql+psycopg://... pytest

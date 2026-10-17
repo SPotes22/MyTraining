@@ -4,7 +4,8 @@ from sqlalchemy import inspect, text
 from werkzeug.middleware.proxy_fix import ProxyFix
 from app.config import Config, validate_config, generate_dev_password
 from flask_wtf.csrf import CSRFError
-from app.extensions import db, login_manager, socketio, csrf
+from app.extensions import db, login_manager, socketio, csrf, migrate
+import os
 from app.logging_setup import configure_logging
 import logging
 
@@ -66,12 +67,32 @@ def ensure_schema():
         _add_column_if_missing(conn, user_columns, 'users', 'institution', "VARCHAR(150)")
         _add_column_if_missing(conn, learning_columns, 'learnings', 'source_session_id', 'INTEGER')
 
+MIGRATIONS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'migrations')
+BASELINE_REVISION = '0001'
+
+
+def migrate_schema():
+    """RNF-13: deja la base en la última migración de Alembic.
+
+    - Base vacía: se crean las tablas con las migraciones.
+    - Base anterior a Alembic (tiene tablas pero no `alembic_version`): ensure_schema()
+      la completa como antes y se marca en la revisión base, sin volver a crear nada.
+    - Luego se aplican las migraciones pendientes.
+    """
+    from flask_migrate import stamp, upgrade
+    tables = set(inspect(db.engine).get_table_names())
+    if 'alembic_version' not in tables and 'users' in tables:
+        ensure_schema()
+        stamp(directory=MIGRATIONS_DIR, revision=BASELINE_REVISION)
+        log.info('Base anterior a Alembic marcada en la revisión base', extra={'event': 'db.stamp'})
+    upgrade(directory=MIGRATIONS_DIR)
+
+
 def init_db():
-    from app.models import (User, Bank, Question, QuestionOption, Exam, ExamQuestion,
+    from app.models import (User, Bank, Question, QuestionOption, Exam, ExamQuestion,  # noqa: F401
         ExamClass, ExamGroup, Learning, LearningModule, Lesson, Block, LearningProgress,
         BlockAnswer, SessionQuestionSnapshot, Poll, PollVote, LiveAnswer)
-    db.create_all()
-    ensure_schema()
+    migrate_schema()
 
     # Inicializar o actualizar Superusuario desde configuración (.env)
     superuser_email = Config.SUPERUSER_EMAIL
@@ -162,6 +183,7 @@ def create_app():
 
     # Inicializar extensiones
     db.init_app(app)
+    migrate.init_app(app, db, directory=MIGRATIONS_DIR, render_as_batch=True, compare_type=True)
     csrf.init_app(app)
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'

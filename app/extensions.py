@@ -1,4 +1,5 @@
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 from flask_login import LoginManager
 from flask_socketio import SocketIO
 from sqlalchemy import event
@@ -6,6 +7,7 @@ from sqlalchemy.engine import Engine
 from flask_wtf.csrf import CSRFProtect
 
 db = SQLAlchemy()
+migrate = Migrate()
 login_manager = LoginManager()
 # Los orígenes CORS se fijan en create_app() desde Config.SOCKETIO_CORS_ORIGINS.
 socketio = SocketIO()

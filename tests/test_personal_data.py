@@ -9,7 +9,7 @@ from support import TEST_PASSWORD, OTHER_PASSWORD  # noqa: E402
 from app import create_app  # noqa: E402
 from app.config import Config  # noqa: E402
 from app.extensions import db  # noqa: E402
-from app.models import AuditLog, Exam, ExamAttempt, ExamSession, LiveAnswer, StudentAnswer, User  # noqa: E402
+from app.models import AuditLog, Bank, Exam, ExamAttempt, ExamSession, LiveAnswer, Question, StudentAnswer, User  # noqa: E402
 
 
 @pytest.fixture()
@@ -35,11 +35,16 @@ def app_ctx(tmp_path):
         db.session.add(session)
         db.session.flush()
         attempt = ExamAttempt(student_id=ids['ana'], session_id=session.id, score=80)
-        db.session.add(attempt)
+        bank = Bank(name='Redes', created_by=ids['profe'])
+        db.session.add_all([attempt, bank])
         db.session.flush()
-        db.session.add(StudentAnswer(attempt_id=attempt.id, question_id=1, question_statement='¿Qué es TCP?',
+        # Pregunta real: PostgreSQL exige la llave foránea que SQLite no revisaba.
+        question = Question(bank_id=bank.id, statement='¿Qué es TCP?', question_type='open_answer')
+        db.session.add(question)
+        db.session.flush()
+        db.session.add(StudentAnswer(attempt_id=attempt.id, question_id=question.id, question_statement='¿Qué es TCP?',
                                      answer_text='Un protocolo', is_correct=True, points_awarded=1))
-        db.session.add(LiveAnswer(session_id=session.id, student_id=ids['ana'], question_id=1, answer_json={'text': 'x'}))
+        db.session.add(LiveAnswer(session_id=session.id, student_id=ids['ana'], question_id=question.id, answer_json={'text': 'x'}))
         guest = User(username='Invitado', role='student')
         db.session.add(guest)
         db.session.commit()
