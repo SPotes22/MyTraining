@@ -4,12 +4,15 @@ from io import BytesIO
 import pandas as pd
 from flask import render_template, request, redirect, url_for, flash, send_file, jsonify
 from flask_login import login_required, current_user
+from sqlalchemy import insert
+from sqlalchemy.orm import selectinload
 from app.extensions import db, socketio
 from app.realtime import events
 from app.realtime.manager import session_manager
 from app.modes import registry
 from app.services.exam_content import normalize_room_code, create_session_question_snapshots
 from app.services import audit
+from app.services.write_lock import serialize_on_sqlite
 from app.services.grading import answer_max_points, grade_open_answer
 from app.services.video_cues import cue_wait_seconds, mark_cue_viewed
 from app.models import (
@@ -341,8 +344,14 @@ def unanswered_question_ids(exam, form, live_answers_map):
 
 @exams_bp.route('/exam/submit/<int:session_id>', methods=['POST'])
 @login_required
+@serialize_on_sqlite  # también evita que un doble clic cree dos intentos (la verificación y el INSERT quedan juntos)
 def submit_exam(session_id):
     session_obj = ExamSession.query.get_or_404(session_id)
+    # RNF-08: preguntas, opciones, pares e ítems en 5 consultas en vez de 1 + 2 por pregunta.
+    # Se guarda la referencia: la sesión de SQLAlchemy solo retiene objetos referenciados.
+    exam = Exam.query.options(selectinload(Exam.questions).selectinload(ExamQuestion.question).options(
+        selectinload(Question.options), selectinload(Question.matching_pairs),
+        selectinload(Question.order_items))).filter_by(id=session_obj.exam_id).first()
 
     live_answers = LiveAnswer.query.filter_by(
         session_id=session_id,
@@ -384,7 +393,6 @@ def submit_exam(session_id):
             return redirect(url_for('exams.presentar_examen', session_id=session_id, pendiente=missing[0]))
 
     snapshots = create_session_question_snapshots(session_obj)
-    exam = session_obj.exam
     total_possible = 0.0
     earned = 0.0
     student_answers = []
@@ -406,13 +414,13 @@ def submit_exam(session_id):
         if q.question_type in ['multiple_choice', 'true_false', 'video']:
             selected_id = request.form.get(f'question_{q.id}', type=int)
             is_correct = False
-            if selected_id:
-                opt = QuestionOption.query.get(selected_id)
-                if opt:
-                    selected_option_text = opt.option_text
-                    if opt.is_correct and opt.question_id == q.id:
-                        is_correct = True
-                        earned += eq_points
+            # Solo opciones de esta pregunta (ya cargadas): un id ajeno no cuenta ni se muestra.
+            opt = next((o for o in q.options if o.id == selected_id), None) if selected_id else None
+            if opt:
+                selected_option_text = opt.option_text
+                if opt.is_correct:
+                    is_correct = True
+                    earned += eq_points
             
             student_answers.append({
                 'question_id': q.id,
@@ -550,20 +558,20 @@ def submit_exam(session_id):
     db.session.add(attempt)
     db.session.flush()
     
-    for ans_data in student_answers:
-        sa = StudentAnswer(
-            attempt_id= attempt.id,
-            question_id=ans_data['question_id'],
-            question_snapshot_id=ans_data['question_snapshot_id'],
-            question_statement=ans_data['question_statement'],
-            selected_option_id=ans_data.get('selected_option_id'),
-            selected_option_text=ans_data.get('selected_option_text'),
-            correct_answer_text=ans_data.get('correct_answer_text'),
-            answer_text=  ans_data.get('answer_text') or ans_data.get('selected_option_text'),
-            is_correct=ans_data['is_correct'],
-            points_awarded=ans_data.get('points_awarded', 0.0)
-        )
-        db.session.add(sa)
+    # Un solo INSERT para todas las respuestas (antes uno por pregunta).
+    if student_answers:
+        db.session.execute(insert(StudentAnswer), [{
+            'attempt_id': attempt.id,
+            'question_id': ans_data['question_id'],
+            'question_snapshot_id': ans_data['question_snapshot_id'],
+            'question_statement': ans_data['question_statement'],
+            'selected_option_id': ans_data.get('selected_option_id'),
+            'selected_option_text': ans_data.get('selected_option_text'),
+            'correct_answer_text': ans_data.get('correct_answer_text'),
+            'answer_text': ans_data.get('answer_text') or ans_data.get('selected_option_text'),
+            'is_correct': ans_data['is_correct'],
+            'points_awarded': ans_data.get('points_awarded', 0.0),
+        } for ans_data in student_answers])
     
     db.session.commit()
 

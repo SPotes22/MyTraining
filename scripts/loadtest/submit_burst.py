@@ -1,10 +1,12 @@
 """Ráfaga de envíos: N estudiantes inician sesión y envían el examen en el mismo instante.
 
 Uso: python scripts/loadtest/submit_burst.py http://127.0.0.1:8080 100 $(python scripts/loadtest/seed_load.py 100 | tail -1)
+Requiere la misma LOADTEST_PASSWORD que seed_load.py.
 Reporta errores y latencias p50/p95/máx. del POST /exam/submit (CA-01: <= 2 s).
 """
-import re, sys, time, threading, urllib.request, urllib.parse, http.cookiejar, statistics
+import os, re, sys, time, threading, urllib.request, urllib.parse, http.cookiejar, statistics
 base, N, sid, pairs = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4:]
+PW = os.environ['LOADTEST_PASSWORD']
 answers = {f'question_{p.split(":")[0]}': p.split(":")[1] for p in pairs}
 lat, errs = [], []
 barrier = threading.Barrier(N)
@@ -16,7 +18,7 @@ def run(i):
     # Token CSRF de la página (la app lo exige en todo POST).
     page = op.open(base + '/login', timeout=60).read().decode()
     token = re.search(r'name="csrf-token" content="([^"]+)"', page).group(1)
-    try: op.open(base+'/login', urllib.parse.urlencode({'email': f's{i}@x.com', 'password': 'secret123', 'csrf_token': token}).encode(), timeout=60)
+    try: op.open(base+'/login', urllib.parse.urlencode({'email': f's{i}@x.com', 'password': PW, 'csrf_token': token}).encode(), timeout=60)
     except urllib.error.HTTPError as e: pass
     form = urllib.parse.urlencode({**answers, 'csrf_token': token}).encode()
     barrier.wait()

@@ -1,6 +1,8 @@
 """Siembra una base para la prueba de carga: 1 examen de 20 preguntas, sala LOAD01 y N estudiantes.
 
-Uso: DATABASE_URL=sqlite:////tmp/load.db python scripts/loadtest/seed_load.py 100
+Uso: export LOADTEST_PASSWORD=$(python -c "import secrets; print(secrets.token_urlsafe(12))")
+     DATABASE_URL=sqlite:////tmp/load.db python scripts/loadtest/seed_load.py 100
+La clave de los usuarios de prueba sale de LOADTEST_PASSWORD (nunca literal en el código).
 Imprime: <session_id> <question_id:option_id correcta> ...  (entrada para submit_burst.py)
 """
 import sys, os
@@ -10,9 +12,10 @@ from app.extensions import db
 from app.models import (User, Bank, Exam, Question, QuestionOption, ExamQuestion, ExamSession)
 from app.services.exam_content import create_session_question_snapshots
 N = int(sys.argv[1])
+PW = os.environ['LOADTEST_PASSWORD']
 app = create_app()
 with app.app_context():
-    t = User(username='T', email='t@x.com', role='instructor'); t.set_password('secret123')
+    t = User(username='T', email='t@x.com', role='instructor'); t.set_password(PW)
     db.session.add(t); db.session.commit()
     b = Bank(name='B', created_by=t.id); db.session.add(b); db.session.commit()
     e = Exam(title='Carga', instructor_id=t.id); db.session.add(e); db.session.commit()
@@ -23,7 +26,7 @@ with app.app_context():
     s = ExamSession(exam_id=e.id, session_code='LOAD01', status='in_progress'); db.session.add(s); db.session.commit()
     create_session_question_snapshots(s)
     from werkzeug.security import generate_password_hash
-    h = generate_password_hash('secret123')
+    h = generate_password_hash(PW)
     for i in range(N):
         db.session.add(User(username=f's{i}', email=f's{i}@x.com', role='student', password_hash=h))
     db.session.commit()
