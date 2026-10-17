@@ -1,0 +1,35 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: pytest + cobertura
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Dependencias
+        run: pip install -r requirements-dev.txt
+
+      # RNF-16: la suite completa y una cobertura mínima de 70 % en blueprints y
+      # services. Una base SQLite temporal por test; no necesita servicios externos.
+      - name: Pytest
+        run: >
+          python -m pytest -q
+          --cov=app/blueprints --cov=app/services
+          --cov-report=term-missing:skip-covered
+          --cov-fail-under=70

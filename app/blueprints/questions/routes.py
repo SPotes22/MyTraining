@@ -8,6 +8,14 @@ from app.services.exam_builder import duplicate_question, save_question_payload,
 from app.services import audit
 from app.services.video_cues import build_video_metadata
 
+def _safe_next(url):
+    """Solo rutas internas ("/..."): evita usar `next` como redirección abierta a otro sitio."""
+    url = (url or '').strip()
+    if url.startswith('/') and not url.startswith('//') and '\\' not in url:
+        return url
+    return None
+
+
 @questions_bp.route('/instructor/bank/create', methods=['POST'])
 @login_required
 def create_bank():
@@ -76,8 +84,7 @@ def create_advanced_question():
         db.session.rollback()
         flash(str(exc), 'danger')
 
-    next_url = request.form.get('next')
-    return redirect(next_url or url_for('questions.mis_preguntas'))
+    return redirect(_safe_next(request.form.get('next')) or url_for('questions.mis_preguntas'))
 
 @questions_bp.route('/instructor/mis-preguntas')
 @login_required
@@ -342,7 +349,7 @@ def edit_question(question_id):
         db.session.rollback()
         flash(str(exc), 'danger')
 
-    return redirect(request.form.get('next') or url_for('questions.mis_preguntas'))
+    return redirect(_safe_next(request.form.get('next')) or url_for('questions.mis_preguntas'))
 
 
 @questions_bp.route('/instructor/question/duplicate/<int:question_id>', methods=['POST'])

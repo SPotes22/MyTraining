@@ -1,6 +1,7 @@
 # Dependencias de desarrollo (no van en la imagen de producción)
 -r requirements.txt
 pytest==9.1.1
+pytest-cov==7.1.0
 pre-commit==4.7.0
 # CLI de GitGuardian para `ggshield auth login` y escaneos manuales; el hook de
 # pre-commit usa su propia copia aislada de la misma versión.

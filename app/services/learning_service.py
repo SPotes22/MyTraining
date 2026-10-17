@@ -1,5 +1,6 @@
 # app/services/learning_service.py
 import json
+import re
 from datetime import datetime
 from app.extensions import db
 from app.models import Learning, LearningModule, Lesson, Block, LearningProgress, BlockAnswer
@@ -341,9 +342,11 @@ def grade_question_block(block, student_answer):
 
     elif qtype == 'fill_blank':
         # user answers dictionary key -> string
-        user_blanks = student_answer.get("blanks", {})
-        # Compare with expected values
-        expected = student_answer.get("expected_blanks", {})
+        user_blanks = student_answer.get("blanks", {}) or {}
+        # Las respuestas esperadas salen de la configuración del profesor ("[[...]]" en
+        # fill_text), nunca del cliente: antes se leían de student_answer["expected_blanks"]
+        # y el estudiante podía enviarse sus propias "respuestas correctas".
+        expected = {str(i): val for i, val in enumerate(re.findall(r"\[\[(.*?)\]\]", cfg.get("fill_text", "")))}
         correct_count = 0
         total_blanks = len(expected)
         if total_blanks > 0:

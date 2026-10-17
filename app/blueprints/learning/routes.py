@@ -25,6 +25,11 @@ def _can_edit_learning(learning):
     return current_user.role == 'instructor' and learning.autor_id == current_user.id
 
 
+def _student_can_access(learning):
+    """Publicada, o el autor/admin previsualizando su borrador."""
+    return learning.estado == 'published' or _can_edit_learning(learning)
+
+
 def _forbidden():
     return jsonify({'error': 'Acceso no autorizado'}), 403
 
@@ -89,8 +94,8 @@ def edit_learning(learning_id):
         flash('Acceso denegado', 'danger')
         return redirect(url_for('learning.instructor_dashboard'))
 
-    learning.nombre = request.form.get('nombre', learning.nombre).strip()
-    learning.descripcion = request.form.get('descripcion', learning.descripcion).strip()
+    learning.nombre = (request.form.get('nombre', learning.nombre) or '').strip()
+    learning.descripcion = (request.form.get('descripcion', learning.descripcion) or '').strip()
 
     if 'portada_file' in request.files:
         file = request.files['portada_file']
@@ -125,7 +130,10 @@ def delete_learning(learning_id):
 @learning_bp.route('/instructor/duplicate/<int:learning_id>', methods=['POST'])
 @login_required
 def duplicate_learning(learning_id):
-    if current_user.role not in ['instructor', 'admin', 'superuser']:
+    learning = Learning.query.get_or_404(learning_id)
+    # Solo el autor o un admin: la copia incluye las respuestas correctas de las
+    # preguntas, así que duplicar un curso ajeno equivalía a leer su solucionario.
+    if not _can_edit_learning(learning):
         flash('Acceso denegado', 'danger')
         return redirect(url_for('learning.instructor_dashboard'))
 
@@ -262,8 +270,8 @@ def api_update_module(module_id):
     mod = LearningModule.query.get_or_404(module_id)
     if not _can_edit_learning(mod.learning):
         return _forbidden()
-    mod.titulo = request.form.get('titulo', mod.titulo).strip()
-    mod.descripcion = request.form.get('descripcion', mod.descripcion).strip()
+    mod.titulo = (request.form.get('titulo', mod.titulo) or '').strip()
+    mod.descripcion = (request.form.get('descripcion', mod.descripcion) or '').strip()
     db.session.commit()
     return jsonify({'success': True})
 
@@ -310,8 +318,8 @@ def api_update_lesson(lesson_id):
     les = Lesson.query.get_or_404(lesson_id)
     if not _can_edit_learning(les.module.learning):
         return _forbidden()
-    les.titulo = request.form.get('titulo', les.titulo).strip()
-    les.descripcion = request.form.get('descripcion', les.descripcion).strip()
+    les.titulo = (request.form.get('titulo', les.titulo) or '').strip()
+    les.descripcion = (request.form.get('descripcion', les.descripcion) or '').strip()
     db.session.commit()
     return jsonify({'success': True})
 
@@ -605,6 +613,9 @@ def api_update_progress():
 
     if not learning_id:
         return jsonify({'error': 'Missing learning_id'}), 400
+    learning = Learning.query.get_or_404(learning_id)
+    if not _student_can_access(learning):
+        return jsonify({'error': 'Esta capacitación no está publicada.'}), 404
 
     progress = learning_service.update_student_progress(
         user_id=current_user.id,
@@ -631,6 +642,10 @@ def api_submit_block_answer():
     student_answer_data = data.get('answer', {})
 
     block = Block.query.get_or_404(block_id)
+    if not _student_can_access(block.lesson.module.learning):
+        return jsonify({'error': 'Esta capacitación no está publicada.'}), 404
+    if block.tipo != 'question':
+        return jsonify({'error': 'El bloque no es una pregunta.'}), 400
     result = learning_service.grade_question_block(block, student_answer_data)
 
     answer_rec = BlockAnswer.query.filter_by(user_id=current_user.id, block_id=block_id).first()
@@ -662,13 +677,15 @@ def api_submit_block_answer():
 
     # socketio event notification for real-time tracking if needed
     try:
+        # Solo al autor del curso: antes se difundía a TODOS los clientes conectados
+        # (nombre y nota del estudiante visibles para cualquiera).
         socketio.emit('student_learning_activity', {
             'user_id': current_user.id,
             'username': current_user.username,
             'learning_id': module.learning_id,
             'score': result['score'],
             'is_correct': result['is_correct']
-        })
+        }, to=f"teacher_{module.learning.autor_id}")
     except Exception:
         pass
 

@@ -6,7 +6,7 @@ La protección anti-doble-voto se hace por student_id (FK única en PollVote).
 from flask import jsonify, request, session
 from flask_login import current_user, login_required
 from app.extensions import db, socketio
-from app.models import Poll, PollVote
+from app.models import ExamSession, Poll, PollVote
 from app.blueprints.polls import polls_bp
 
 
@@ -25,6 +25,11 @@ def create_poll():
 
     if not question or not room_code:
         return jsonify({'error': 'question_text y room_code son obligatorios'}), 400
+
+    # Solo en salas propias: antes cualquier profesor podía lanzar encuestas en la sala de otro.
+    room = ExamSession.query.filter_by(session_code=room_code).first()
+    if current_user.role not in ('superuser', 'admin') and (not room or room.exam.instructor_id != current_user.id):
+        return jsonify({'error': 'Sala no encontrada o no es tuya'}), 403
 
     # Normaliza opciones según tipo
     if poll_type == 'true_false':
@@ -119,6 +124,11 @@ def close_poll(poll_id):
 @login_required
 def poll_results(poll_id):
     poll = Poll.query.get_or_404(poll_id)
+    # Las respuestas abiertas pueden ser personales: solo el profesor dueño, un admin
+    # o quien ya votó en esa encuesta ven los resultados.
+    voted = PollVote.query.filter_by(poll_id=poll.id, student_id=current_user.id).first()
+    if poll.instructor_id != current_user.id and current_user.role not in ('superuser', 'admin') and not voted:
+        return jsonify({'error': 'Acceso denegado'}), 403
     return jsonify(_poll_payload(poll))
 
 

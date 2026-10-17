@@ -23,3 +23,8 @@ instance/
 
 # Added by ggshield
 .cache_ggshield
+
+# Cobertura (pytest-cov)
+.coverage
+.coverage.*
+htmlcov/
