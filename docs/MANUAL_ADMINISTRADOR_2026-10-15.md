@@ -118,6 +118,8 @@ Lista completa con comentarios en [`env.example`](../env.example).
 | `GUNICORN_THREADS` | No | `64` | Hilos del único worker |
 | `SUPERUSER_RESET_ON_BOOT` | No | `false` | `true` reescribe la clave del superusuario desde el entorno en cada arranque (§4.4) |
 | `SEED_DEMO_DATA` | No | `false` | Crea un profesor y un examen de demostración |
+| `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USE_TLS`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM` | **Sí, para recuperar contraseñas** | Los de tu proveedor SMTP | Correo de "¿Olvidaste tu contraseña?". Sin `MAIL_SERVER` no se envía nada y queda una advertencia en el log. `MAIL_PASSWORD` va en el gestor de secretos |
+| `PASSWORD_RESET_MAX_AGE` / `PASSWORD_RESET_MAX_REQUESTS` | No | `1800` / `3` | Vigencia del enlace (s) y solicitudes por correo y hora |
 
 Para cambiar una variable hay que recrear el contenedor (`docker rm -f mytraining` y repetir `docker run` con los mismos volúmenes). Los datos están en los volúmenes y no se pierden.
 
@@ -143,7 +145,9 @@ Motivo: SQLite reutiliza el número de usuario y el siguiente profesor creado he
 
 ### 4.4 Tareas sin pantalla: contraseñas y roles
 
-El panel aún no permite restablecer contraseñas ni cambiar roles. Se hace desde el servidor:
+**Contraseñas:** cada usuario con correo puede recuperarla solo desde **¿Olvidaste tu contraseña?** (requiere `MAIL_*`, §3) o cambiarla en **Mi perfil y mis datos**. Usa el comando de abajo solo si el correo no funciona.
+
+**Roles:** el panel aún no permite cambiarlos. Igual que las contraseñas de emergencia, se hace desde el servidor:
 
 ```bash
 docker exec -i mytraining python - <<'PY'
@@ -167,6 +171,13 @@ PY
 Cada ingreso por código crea un usuario estudiante sin correo, que no se borra solo. Es normal ver crecer el contador de estudiantes. Política pendiente: anonimizarlos a los 90 días (requisito legal RL-10).
 
 ---
+
+### 4.6 Solicitudes de los titulares de datos
+
+Los usuarios consultan, corrigen, descargan y eliminan sus datos desde **Mi perfil y mis datos**. Quedan para ti:
+
+- **Profesores con contenido y administradores que piden su supresión:** la página no les deja hacerlo solos. Reasigna o archiva su contenido y cámbiales la contraseña (§4.4); la anonimización completa de un profesor con contenido está pendiente de definir con el responsable legal.
+- **Plazos legales (Ley 1581):** consultas en máximo 10 días hábiles y reclamos en 15. Cada exportación y supresión queda en la auditoría (`user.export`, `user.anonymize`).
 
 ## 5. Respaldos y restauración
 
@@ -214,6 +225,7 @@ curl -s localhost:8080/healthz
 | Disco | Alerta de GCP al 80 % de uso del disco persistente |
 | Señales de que toca crecer | `database is locked` en los logs; quejas de envíos lentos con salas grandes (§8) |
 | Secretos en el código | Panel de GitGuardian y el job **Secret scan (GitGuardian)** de GitHub Actions (§6.1) |
+| Quién hizo qué | **Administración → Auditoría** (`/admin/audit`): creación, edición, archivo y borrado de exámenes; inicio/pausa/fin de salas; exportación de resultados; calificaciones manuales; alta y baja de profesores; recuperación y cambio de contraseñas; exportación y supresión de datos personales. Filtra por acción o por ID de usuario. Guarda el ID y la IP, no el correo |
 
 ### 6.1 Escaneo de secretos con GitGuardian
 
@@ -289,6 +301,7 @@ Las columnas nuevas de la base se agregan solas al arrancar (`ensure_schema`). S
 - [ ] Decidido si habrá menores de edad (RL-05)
 - [ ] Decidido si se abre el auto-registro de profesores (§4.2)
 - [ ] Profesores informados de las limitaciones (Manual de usuario §4), en especial que no hay temporizador
+- [ ] `MAIL_*` configurado y probado: pide una recuperación de contraseña y comprueba que llega el correo
 - [ ] Secreto `GITGUARDIAN_API_KEY` configurado en GitHub y job **Secret scan (GitGuardian)** en verde (§6.1)
 - [ ] Incidentes abiertos en GitGuardian revisados y cerrados
 

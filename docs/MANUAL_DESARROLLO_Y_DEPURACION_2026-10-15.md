@@ -67,7 +67,7 @@ La base queda en `instance/database.db`: las rutas `sqlite:///` relativas se res
 
 | Tarea | Comando |
 |---|---|
-| Todos los tests | `pytest` (88 tests, ~50 s) |
+| Todos los tests | `pytest` (116 tests, ~70 s) |
 | Un archivo / un test | `pytest tests/test_preproduction_hardening.py -k socket -s` |
 | Arrancar como pre-producción en local | `APP_ENV=preproduction SESSION_COOKIE_SECURE=0 SECRET_KEY=$(python -c 'import secrets;print(secrets.token_hex(32))') SUPERUSER_PASSWORD="$(python -c 'import secrets;print(secrets.token_urlsafe(16))')" gunicorn -c gunicorn.conf.py wsgi:app` |
 | Salud | `curl localhost:8080/healthz` |
@@ -157,6 +157,11 @@ app/
     exam_builder.py    Guardar, duplicar y validar preguntas; agregar al examen
     learning_service.py   Crear, exportar e importar capacitaciones
     remediation_service.py Curso de refuerzo (PASSING_SCORE = 40)
+    audit.py           RF-030: audit.record(acción, entidad, id, **detalles) antes del commit
+    grading.py         RF-027/RN-08: calificación manual de abiertas y recálculo del intento
+    mailer.py          SMTP (MAIL_*); sin servidor imprime en consola en desarrollo
+    password_reset.py  RF-028: token firmado de un solo uso (ligado al hash de la contraseña)
+    personal_data.py   RF-029: exportar y anonimizar los datos de un usuario
     video_cues.py      RF-011: URL → proveedor (YouTube/Vimeo/archivo) y validación de esquema,
                        metadatos JSON del cue (questions.video_metadata), tiempos mm:ss,
                        desbloqueo en servidor (cue_wait_seconds) y cues de bloques de video
@@ -306,6 +311,21 @@ En capacitaciones el equivalente es `Block.configuracion` del bloque de video (`
 
 Para cambiarlo: los tiempos y la validación están en `services/video_cues.py`; la lógica del reproductor en `static/js/video_cues.js`; los tests en `tests/test_video_cues.py`.
 
+
+### 5.9 Registrar una acción en la auditoría (RF-030)
+
+Toda acción que cree, edite, archive o borre exámenes, usuarios o resultados se registra:
+
+```python
+from app.services import audit
+audit.record('exam.archive', 'exam', exam.id, title=exam.title)   # antes del commit
+db.session.commit()
+```
+
+- Nombres de acción `entidad.verbo` (`exam.create`, `user.anonymize`, `answer.grade`…), para poder filtrar por prefijo en `/admin/audit`.
+- En los detalles **no pongas correos, nombres ni contraseñas** (minimización): basta el id.
+- Si la ruta no hace commit (una descarga), usa `audit.record(..., commit=True)`.
+
 ---
 
 ## 6. Depuración: síntoma → causa → dónde mirar
@@ -345,6 +365,10 @@ Para cambiarlo: los tiempos y la validación están en `services/video_cues.py`;
 | `test_socrative_module.py` | Constructor, bancos, clases, papelera, autorización de salas |
 | `test_session_report_and_snapshots.py` | Instantáneas e integridad del reporte |
 | `test_remediation_service.py` | Curso de refuerzo y no duplicación |
+| `test_audit_log.py` | RF-030: eventos registrados, vista solo para admin, sin correos en el registro |
+| `test_manual_grading.py` | RF-027/RN-08: abiertas fuera de la nota hasta calificarlas, recálculo, permisos |
+| `test_password_reset.py` | RF-028: flujo completo, un solo uso, caducidad, manipulación, límite de solicitudes |
+| `test_personal_data.py` | RF-029: ver/corregir, exportar solo lo propio, anonimizar, restricciones |
 | `test_pending_questions.py` | RN-14: envío rechazado con pendientes (incluidas preguntas de video no vistas), respuestas guardadas por socket, excepción del modo guiado |
 | `test_video_cues.py` | RF-011: tiempos y URLs de video, entrega diferida de preguntas, cues en capacitaciones, permisos del editor de capacitaciones |
 | `test_preproduction_hardening.py` | Seguridad y reglas: IDOR, sockets, CSRF, bloqueo de login, RN-09, RN-10, RN-12, RN-13, borrado de profesores, `validate_config`, `/healthz` |

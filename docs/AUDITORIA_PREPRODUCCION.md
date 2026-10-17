@@ -12,7 +12,7 @@ Este documento resume qué se revisó, qué se corrigió en el código, qué lí
 |---|---|---|
 | Hallazgos de seguridad de la Fase 1 (SRS V3 §9) | 6 abiertos | **6 cerrados** |
 | Otros hallazgos de seguridad encontrados en esta auditoría | — | 13 cerrados |
-| Tests automatizados | 19 | **88** (todos pasan) |
+| Tests automatizados | 19 | **116** (todos pasan) |
 | Prueba de carga | no existía | hecha (§4) |
 | Arranque de producción | `debug=True` en `0.0.0.0` | Gunicorn, 1 worker, `/healthz`, Dockerfile |
 | Respaldo de la base | no existía | `scripts/backup_sqlite.py` con retención |
@@ -73,7 +73,7 @@ Los handlers de Socket.IO se importaban después de `socketio.init_app()`. Con F
 **Seguridad y legal, sin resolver en código:**
 
 - **RL-01 a RL-12 (Ley 1581 de 2012):** falta la política de tratamiento, la casilla de autorización, el registro de consentimientos y la vista de derechos del titular (RF-029). **Es lo que bloquea operar con datos reales**, más que cualquier punto técnico. Requiere texto validado por un abogado.
-- **RF-028, recuperar contraseña:** necesita un proveedor de correo.
+- **RF-028, recuperar contraseña:** implementado (17 oct); falta configurar el servidor de correo (`MAIL_*`) en pre-producción.
 - **RL-10, invitados:** cada ingreso por código crea un `User` nuevo que nunca se borra. Hace falta un trabajo periódico que los anonimice a los 90 días.
 
 **Funcionales "Must", sin cambios en esta auditoría** (detalle en `SRS_2026-10-15.md`):
@@ -152,7 +152,7 @@ El SAD (ADR-003) ya prevé la migración sin tocar la lógica de negocio. La pre
 ## 6. Cómo reproducir
 
 ```bash
-pytest                                   # 88 tests
+pytest                                   # 116 tests
 APP_ENV=preproduction SECRET_KEY=... SUPERUSER_PASSWORD=... \
   gunicorn -c gunicorn.conf.py wsgi:app  # arranque pre-producción
 curl localhost:8080/healthz              # {"status":"ok","env":"preproduction"}

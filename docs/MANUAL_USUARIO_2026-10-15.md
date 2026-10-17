@@ -1,13 +1,13 @@
 # Manual de usuario — MyTraining
 
-**Fecha:** 15 de octubre de 2026 (actualizado el 17 de octubre: preguntas durante el video) · **Versión de la app:** pre-producción
+**Fecha:** 15 de octubre de 2026 (actualizado el 17 de octubre: preguntas durante el video, calificación manual, recuperar contraseña y Mi perfil) · **Versión de la app:** pre-producción
 **Para:** profesores/instructores y estudiantes. La administración de la plataforma está en el [Manual de administrador](MANUAL_ADMINISTRADOR_2026-10-15.md).
 
 ---
 
 ## Contenido
 
-1. [Primeros pasos](#1-primeros-pasos)
+1. [Primeros pasos](#1-primeros-pasos) — incluye 1.5 Mi perfil y mis datos
 2. [Guía del estudiante](#2-guía-del-estudiante)
 3. [Guía del profesor](#3-guía-del-profesor)
    - 3.1 Banco de preguntas · 3.1.1 Preguntas durante un video · 3.2 Importar desde Excel/CSV · 3.3 Crear un examen · 3.4 Aplicar el examen en vivo · 3.5 Resultados y reportes · 3.6 Clases · 3.7 Capacitaciones · 3.8 Refuerzo automático · 3.9 Preguntas rápidas y encuestas
@@ -35,11 +35,24 @@
 
 - Mínimo **8 caracteres**.
 - Tras **5 intentos fallidos** el inicio de sesión se bloquea **15 minutos**. Espera y vuelve a intentar, o pide ayuda al administrador.
-- Por ahora no existe "Olvidé mi contraseña": el administrador debe ayudarte.
+- **¿La olvidaste?** En *Iniciar Sesión* pulsa **¿Olvidaste tu contraseña?**, escribe tu correo y abre el enlace que te llega. El enlace vale **30 minutos** y sirve **una sola vez**. Si no llega, revisa la carpeta de spam. Las cuentas de invitado (ingreso solo con nombre y código) no tienen contraseña ni se pueden recuperar.
+- Para cambiarla estando dentro, ve a **Mi perfil y mis datos** (§1.5).
 
 ### 1.4 Si ves "La página caducó o el formulario no es válido"
 
 Es una protección de seguridad. Recarga la página (F5) y repite la acción.
+
+---
+
+### 1.5 Mi perfil y mis datos
+
+En el menú de tu usuario (arriba a la derecha) → **Mi perfil y mis datos** puedes:
+
+- **Ver y corregir** tu nombre, correo, teléfono e institución.
+- **Cambiar tu contraseña** (te pide la actual).
+- **Descargar mis datos:** un archivo con tu perfil, tus intentos de examen y respuestas, tu progreso en capacitaciones y tus votos.
+- **Eliminar mi cuenta:** borra tu nombre, correo, teléfono, institución y contraseña, y ya no podrás entrar. Tus respuestas en exámenes se conservan **sin identificarte**, para que el profesor no pierda las estadísticas del grupo. Escribe `ELIMINAR` y tu contraseña para confirmar. No se puede deshacer.
+  - Si eres profesor y tienes exámenes o capacitaciones, la eliminación la hace el administrador: escríbele.
 
 ---
 
@@ -79,7 +92,7 @@ Consejos:
 
 1. Pulsa el botón de enviar; está visible en todo momento, no solo en la última pregunta.
 2. Verás el **Resumen de Evaluación** con tu nota y el **Desglose de Preguntas**: tu respuesta, la correcta y la explicación.
-3. Las preguntas abiertas aparecen como **Pendiente**: las revisa el profesor y no suman a la nota automática.
+3. Las preguntas abiertas aparecen como **Pendiente** hasta que el profesor las califique: mientras tanto **no cuentan** en tu nota (ni a favor ni en contra), y verás el aviso *"la nota puede cambiar"*. Cuando las califique aparecen como **Calificada por el profesor** y tu nota se actualiza.
 
 Solo tú (y tu profesor) pueden ver tus resultados. Si la sala ya finalizó, no se reciben más envíos.
 
@@ -211,6 +224,8 @@ Ordena las capas de abajo hacia arriba,ordering,Redes,,,
   - **matriz de resultados en vivo**: estudiante × pregunta, verde = correcta, rojo = incorrecta. Haz clic en una celda para ver el **Detalle de Respuesta**;
   - interruptores **Mostrar nombres / Mostrar respuestas / Mostrar resultados**, para proyectar en clase sin revelar datos antes de tiempo;
   - descarga en **Excel** de toda la sala o de un estudiante.
+- **Calificar respuestas abiertas:** en el reporte de la sala, la tarjeta **Respuestas abiertas** lista cada respuesta con el nombre del estudiante. Escribe los **Puntos** (de 0 al valor de la pregunta; se permiten decimales y nota parcial) y pulsa **Calificar**. La nota del estudiante se recalcula al momento. Puedes corregir una calificación con **Actualizar**.
+  - Mientras no las califiques, las abiertas **no cuentan** en la nota: un examen con 2 puntos de opción múltiple acertados y una abierta de 8 puntos sin calificar da 100 % (2/2); al calificarla con 4, queda en 60 % (6/10).
 - **Resultados:** todos los intentos, filtrables por asignatura (clase).
 
 ### 3.6 Clases (menú *Clases*)
@@ -269,12 +284,10 @@ Conviene saberlo antes de usarla con nota real:
 | Función | Situación | Qué hacer mientras tanto |
 |---|---|---|
 | Temporizador del examen | No hay contador ni cierre automático por tiempo | Controla el tiempo tú y usa **Finalizar** |
-| Calificar respuestas abiertas | Quedan "Pendiente" y en 0 | Revísalas en el reporte y ajusta fuera de la plataforma |
 | Respuesta corta autocalificada | No existe | Usa opción múltiple o abierta |
 | Alertas antifraude | El panel existe, pero el examen no detecta el cambio de pestaña | Supervisa presencialmente |
 | Validación de importación | No previsualiza ni detalla errores | Importa en lotes pequeños |
 | Vista "Mis intentos" del estudiante | No existe | El estudiante ve su resultado al enviar |
-| Recuperar contraseña | No existe | Pide ayuda al administrador |
 | Puntaje mínimo de aprobación configurable | Fijo en 60 % (y 40 % para el refuerzo) | — |
 
 ---
@@ -291,6 +304,8 @@ Conviene saberlo antes de usarla con nota real:
 
 **Subí un archivo y dice "Archivo demasiado grande".** El límite es 50 MB. Comprime el archivo o usa YouTube/Vimeo para el video.
 
-**Me salió "Demasiados intentos fallidos".** Espera 15 minutos.
+**Me salió "Demasiados intentos fallidos".** Espera 15 minutos, o usa **¿Olvidaste tu contraseña?**: al crear una nueva se levanta el bloqueo.
+
+**No me llega el correo para recuperar la contraseña.** Revisa spam y que escribiste el correo con el que te registraste. Si sigue sin llegar, el servidor de correo de la plataforma puede no estar configurado: avisa al administrador.
 
 **¿Quién ve mis resultados?** Solo tú, el profesor dueño del examen y el administrador.
