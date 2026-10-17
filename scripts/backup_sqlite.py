@@ -4,6 +4,7 @@ Usa la API de backup de sqlite3, segura con la app corriendo en modo WAL.
 Uso (cron diario en el host, p. ej. 03:10):
     python scripts/backup_sqlite.py /data/mytraining.db /backups --keep-days 30
 Restaurar: detener la app, copiar el .db respaldado sobre el original y arrancar.
+Probar que el respaldo sirve sin tocar la base real: scripts/restore_drill.py (semanal).
 """
 import argparse
 import sqlite3
