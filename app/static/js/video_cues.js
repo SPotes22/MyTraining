@@ -130,6 +130,17 @@
     });
   }
 
+  /** Al terminar el video: se muestran las preguntas que no alcanzaron a aparecer
+   *  (p. ej. si el estudiante adelantó el video) y se avisa a la página. */
+  function onEnded(entry) {
+    entry.cues.forEach(cue => {
+      if (cue.done) return;
+      cue.done = true;
+      reveal(document.querySelector(cue.target), 'ended');
+    });
+    entry.container.dispatchEvent(new CustomEvent('videocue:ended', { bubbles: true }));
+  }
+
   function fallback(entry) {
     entry.cues.forEach(cue => reveal(document.querySelector(cue.target), 'fallback'));
   }
@@ -145,6 +156,8 @@
             clearInterval(timer);
             if (ev.data === YT.PlayerState.PLAYING) {
               timer = setInterval(() => onTime(entry, player.getCurrentTime()), 250);
+            } else if (ev.data === YT.PlayerState.ENDED) {
+              onEnded(entry);
             }
           },
           onError() { fallback(entry); },
@@ -158,6 +171,7 @@
     loadVimeoApi().then(Vimeo => {
       const player = new Vimeo.Player(iframe);
       player.on('timeupdate', data => onTime(entry, data.seconds));
+      player.on('ended', () => onEnded(entry));
       player.on('error', () => fallback(entry));
       entry.pause = () => player.pause().catch(() => {});
     }).catch(() => fallback(entry));
@@ -170,6 +184,7 @@
     if (video.readyState >= 1) seekToStart();
     else video.addEventListener('loadedmetadata', seekToStart, { once: true });
     video.addEventListener('timeupdate', () => onTime(entry, video.currentTime));
+    video.addEventListener('ended', () => onEnded(entry));
     video.addEventListener('error', () => fallback(entry));
     entry.pause = () => video.pause();
   }

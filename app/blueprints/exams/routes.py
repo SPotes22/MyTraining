@@ -305,6 +305,38 @@ def create_advanced_exam():
     return redirect(url_for('exams.instructor_dashboard'))
 
 
+def unanswered_question_ids(exam, form, live_answers_map):
+    """Preguntas del examen sin respuesta, ni en el formulario ni en el progreso guardado.
+
+    Mismos criterios que `isStepAnswered` en presentar_examen.html. Una pregunta de video
+    que el estudiante aún no vio no tiene campos en el formulario: cuenta como pendiente.
+    """
+    missing = []
+    for eq in exam.questions:
+        q = eq.question
+        if not q:
+            continue
+        live = live_answers_map.get(q.id) or {}
+        qtype = q.question_type
+        if qtype in ['multiple_choice', 'true_false', 'video']:
+            answered = bool(form.get(f'question_{q.id}')) or live.get('selected_option_id') is not None
+        elif qtype == 'multiple_select':
+            answered = bool(form.getlist(f'question_{q.id}')) or bool(live.get('selected_option_ids'))
+        elif qtype == 'matching':
+            answered = (all(form.get(f'question_{q.id}_pair_{p.id}') for p in q.matching_pairs)
+                        or bool(live.get('pair_map')) and all((live.get('pair_map') or {}).values()))
+        elif qtype == 'ordering':
+            answered = (all(form.get(f'order_{q.id}_{item.id}') for item in q.order_items)
+                        or bool(live.get('order_map')) and all(v is not None for v in live['order_map'].values()))
+        elif qtype == 'open_answer':
+            answered = bool((form.get(f'question_{q.id}') or '').strip()) or bool((live.get('text') or '').strip())
+        else:
+            continue
+        if not answered:
+            missing.append(q.id)
+    return missing
+
+
 @exams_bp.route('/exam/submit/<int:session_id>', methods=['POST'])
 @login_required
 def submit_exam(session_id):
@@ -338,6 +370,16 @@ def submit_exam(session_id):
     if session_obj.exam.allow_multiple_attempts and attempt_count >= (session_obj.exam.max_attempts or 1):
         flash('Alcanzaste el máximo de intentos permitidos.', 'warning')
         return redirect(url_for('auth.student_join_exam'))
+
+    # El examen no se envía con preguntas sin responder (también las de video que no
+    # llegó a ver). Excepción: en "Guiado por profesor" el profesor decide qué preguntas
+    # se muestran y puede saltarse alguna. Un futuro autoenvío por tiempo (RN-03/RN-05)
+    # deberá omitir esta validación.
+    if (session_obj.exam.exam_mode or 'instant_feedback') != 'teacher_paced':
+        missing = unanswered_question_ids(session_obj.exam, request.form, live_answers_map)
+        if missing:
+            flash(f'Te faltan {len(missing)} pregunta(s) por responder. Te llevamos a la primera pendiente.', 'warning')
+            return redirect(url_for('exams.presentar_examen', session_id=session_id, pendiente=missing[0]))
 
     snapshots = create_session_question_snapshots(session_obj)
     exam = session_obj.exam

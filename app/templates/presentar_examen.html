@@ -554,9 +554,42 @@ function showQuestionById(questionId) {
   if (idx >= 0) { currentStep = idx; updateStepView(); }
 }
 
+/* Índice de la próxima pregunta sin responder después de `from` (en ciclo), o -1. */
+function nextUnansweredIndex(from) {
+  const states = getAnsweredStates();
+  for (let k = 1; k <= TOTAL_Q; k++) {
+    const i = (from + k) % TOTAL_Q;
+    if (!states[i]) return i;
+  }
+  return -1;
+}
+
+/* Aviso al llegar a una pregunta pendiente. Si es de video y aún no apareció,
+   explica que hay que reproducir el video hasta su minuto. */
+function hintPendingStep(i) {
+  const step = document.querySelectorAll('.question-step')[i];
+  if (!step) return;
+  if (step.dataset.videoGated && step.dataset.videoRevealed !== '1') {
+    showToast('Esta pregunta aparece durante el video: reprodúcelo hasta su minuto para responderla.', 'warning');
+  } else {
+    showToast('Te falta responder esta pregunta.', 'warning');
+  }
+}
+
+/* "Siguiente" lleva a la próxima pregunta SIN RESPONDER (en ciclo). En la primera
+   pasada equivale a avanzar en orden; después recorre solo las pendientes hasta que
+   no quede ninguna, para que el estudiante no tenga que buscarlas. */
 function nextQuestion() {
   submitRealtimeAnswer();
-  if (currentStep < TOTAL_Q - 1) { currentStep++; updateStepView(); }
+  const target = nextUnansweredIndex(currentStep);
+  if (target === -1) {
+    if (currentStep < TOTAL_Q - 1) { currentStep++; updateStepView(); }
+    return;
+  }
+  const wrapped = target <= currentStep;
+  currentStep = target;
+  updateStepView();
+  if (wrapped) hintPendingStep(target);
 }
 function prevQuestion() {
   submitRealtimeAnswer();
@@ -601,7 +634,20 @@ function updateStepView() {
   const hint    = document.getElementById('pending-hint');
 
   if (btnPrev) btnPrev.disabled = (currentStep === 0 || isPaced);
-  if (btnNext) btnNext.classList.toggle('d-none', isLast || isPaced);
+  if (btnNext) {
+    // Visible mientras haya a dónde ir: siguiente pregunta o pendientes por responder.
+    btnNext.classList.toggle('d-none', (isLast && allAnswered) || isPaced);
+    const target = nextUnansweredIndex(currentStep);
+    const pending = TOTAL_Q - answeredCount;
+    const goesBack = target !== -1 && target <= currentStep;
+    btnNext.innerHTML = target === currentStep
+      ? 'Falta esta pregunta<i class="bi bi-exclamation-circle ms-1"></i>'
+      : goesBack
+        ? `Ir a pendientes (${pending})<i class="bi bi-arrow-repeat ms-1"></i>`
+        : 'Siguiente<i class="bi bi-chevron-right ms-1"></i>';
+    btnNext.classList.toggle('btn-warning', goesBack);
+    btnNext.classList.toggle('btn-primary', !goesBack);
+  }
 
   // El botón de enviar es visible en la última pregunta SIEMPRE (no solo
   // cuando el servidor ya confirmó todas las respuestas), o desde cualquier
@@ -626,10 +672,14 @@ function updateStepView() {
 
 function handleSubmitClick(evt) {
   if (isPaused) { evt.preventDefault(); return false; }
-  const answeredCount = getAnsweredStates().filter(Boolean).length;
-  if (answeredCount < TOTAL_Q) {
+  const states = getAnsweredStates();
+  const pending = states.filter(a => !a).length;
+  if (pending > 0) {
     evt.preventDefault();
-    showToast('Aún tienes preguntas sin responder.', 'warning');
+    // Lo lleva directo a la primera pendiente en vez de solo avisar.
+    const first = states.findIndex(a => !a);
+    goToStep(first);
+    showToast(`Te faltan ${pending} pregunta(s) por responder. Te llevamos a la primera.`, 'warning');
     return false;
   }
   submitRealtimeAnswer();
@@ -682,8 +732,20 @@ document.getElementById('exam-form')?.addEventListener('videocue:revealed', evt 
   if (savedAnswers[qid]) restoreAnswer(parseInt(qid), savedAnswers[qid]);
   updateStepView();
 });
+// RF-011: al terminar un video, sus preguntas que no habían aparecido (p. ej. porque
+// el estudiante adelantó el video) se muestran; si quedó alguna sin responder, se avisa.
+document.getElementById('exam-form')?.addEventListener('videocue:ended', evt => {
+  const step = evt.target.closest('.question-step');
+  if (step && !isStepAnswered(step)) {
+    showToast('Terminó el video: responde su pregunta antes de seguir.', 'warning');
+  }
+});
 window.VideoCues?.init(document.getElementById('exam-form'));
 
 updateStepView();
+
+// Si el servidor rechazó el envío por preguntas pendientes, abre la primera de ellas.
+const PENDING_QID = {{ (request.args.get('pendiente') or 0)|int }};
+if (PENDING_QID) showQuestionById(PENDING_QID);
 </script>
 {% endblock %}

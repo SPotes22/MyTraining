@@ -12,7 +12,7 @@ Este documento resume qué se revisó, qué se corrigió en el código, qué lí
 |---|---|---|
 | Hallazgos de seguridad de la Fase 1 (SRS V3 §9) | 6 abiertos | **6 cerrados** |
 | Otros hallazgos de seguridad encontrados en esta auditoría | — | 13 cerrados |
-| Tests automatizados | 19 | **82** (todos pasan) |
+| Tests automatizados | 19 | **88** (todos pasan) |
 | Prueba de carga | no existía | hecha (§4) |
 | Arranque de producción | `debug=True` en `0.0.0.0` | Gunicorn, 1 worker, `/healthz`, Dockerfile |
 | Respaldo de la base | no existía | `scripts/backup_sqlite.py` con retención |
@@ -79,7 +79,6 @@ Los handlers de Socket.IO se importaban después de `socketio.init_app()`. Con F
 **Funcionales "Must", sin cambios en esta auditoría** (detalle en `SRS_2026-10-15.md`):
 
 - RF-007 y RN-05: no hay temporizador visible ni validación del tiempo en el servidor.
-- RN-02: la pregunta del video aparece y el video se pausa (RF-011 cumple desde el 17 oct), pero el estudiante puede reanudarlo sin responder.
 - RF-014 y RN-03: la importación CSV/Excel no valida antes de insertar.
 - RN-04 (V3): se puede editar un examen con una sala en curso.
 - RN-07: el refuerzo usa un umbral fijo de 40 %.
@@ -153,7 +152,7 @@ El SAD (ADR-003) ya prevé la migración sin tocar la lógica de negocio. La pre
 ## 6. Cómo reproducir
 
 ```bash
-pytest                                   # 82 tests
+pytest                                   # 88 tests
 APP_ENV=preproduction SECRET_KEY=... SUPERUSER_PASSWORD=... \
   gunicorn -c gunicorn.conf.py wsgi:app  # arranque pre-producción
 curl localhost:8080/healthz              # {"status":"ok","env":"preproduction"}

@@ -15,6 +15,7 @@ Plataforma Flask (SSR con Jinja2) + Socket.IO + SQLite para capacitaciones y ex�
 - No borres en cascada datos con historial (RN-10, RN-13); no versiones `uploads/`, `*.db` ni `.env`.
 - **Ningún secreto literal** (ni de ejemplo) en código, tests, `env.example` o docs: usa marcadores `<CLAVE>` o valores generados. Un valor filtrado se agrega como SHA-256 a `LEAKED_SECRET_SHA256`.
 - Hay **dos caminos de calificación** (`grade_answer` en vivo y `submit_exam` final): cambia ambos.
+- "Pregunta respondida" se define en dos sitios que deben coincidir: `isStepAnswered` (JS) y `unanswered_question_ids` (servidor, RN-14).
 
 Comandos: `pip install -r requirements-dev.txt` · `pre-commit install` (escaneo de secretos con ggshield; requiere `GITGUARDIAN_API_KEY`, nunca lo saltes con `--no-verify`) · `pytest` (debe quedar en verde) · `python run.py` (dev).
 

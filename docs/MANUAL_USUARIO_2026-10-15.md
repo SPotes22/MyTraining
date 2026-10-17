@@ -66,7 +66,8 @@ Según cómo lo configuró el profesor, verás uno de tres modos:
 
 Consejos:
 
-- **Preguntas con video:** algunas preguntas aparecen mientras ves un video. Dale *play*: al llegar al minuto indicado el video se pausa y aparece la pregunta. Si recargas la página, las preguntas que ya aparecieron siguen visibles.
+- **Preguntas con video:** algunas preguntas aparecen mientras ves un video. Dale *play*: al llegar al minuto indicado el video se pausa y aparece la pregunta. Puedes seguir viendo el video, pero tendrás que responderla para enviar el examen. Si adelantas el video, las preguntas que no alcanzaron a salir aparecen cuando termina. Si recargas la página, las preguntas que ya aparecieron siguen visibles.
+- **No puedes dejar preguntas en blanco.** **Siguiente** te lleva a la próxima pregunta *sin responder*: si saltaste alguna, en la última pregunta el botón cambia a **Ir a pendientes (N)** y te devuelve a ella. **Enviar Examen** se habilita cuando todas tengan respuesta.
 - **Tus respuestas se guardan solas.** Si se cae Internet o recargas la página, al volver aparecen como las dejaste.
 - Los puntos de progreso muestran qué preguntas te faltan.
 - En **selección múltiple** puedes marcar más de una opción.
@@ -130,7 +131,7 @@ Cualquier pregunta con **URL de Video** puede aparecer en un minuto concreto del
 
 Puedes escribir los tiempos en segundos (`95`) o en formato `mm:ss` / `h:mm:ss`. La pregunta no viaja en la página del estudiante: el servidor solo la entrega cuando ya pasó ese tiempo, así que no se puede leer antes adelantando la página.
 
-> **Limitación actual:** el video se pausa al aparecer la pregunta, pero el estudiante puede volver a darle *play* sin responder.
+> El estudiante puede volver a darle *play* sin responder, pero **no puede enviar el examen** hasta contestarla. Si adelanta el video, la pregunta aparece al terminar.
 
 ### 3.2 Importar preguntas desde Excel o CSV
 
@@ -201,6 +202,8 @@ Ordena las capas de abajo hacia arriba,ordering,Redes,,,
 
 > **Finaliza solo cuando todos hayan enviado.** Tras finalizar, los envíos se rechazan.
 
+> **Preguntas sin responder:** en los modos *Feedback Inmediato* y *Navegación Libre* el estudiante no puede enviar con preguntas en blanco. En *Guiado por profesor* sí puede, porque tú decides qué preguntas se muestran.
+
 ### 3.5 Resultados y reportes
 
 - **Historial:** todas tus salas. Abre una para ver su **reporte**:
@@ -268,7 +271,6 @@ Conviene saberlo antes de usarla con nota real:
 | Temporizador del examen | No hay contador ni cierre automático por tiempo | Controla el tiempo tú y usa **Finalizar** |
 | Calificar respuestas abiertas | Quedan "Pendiente" y en 0 | Revísalas en el reporte y ajusta fuera de la plataforma |
 | Respuesta corta autocalificada | No existe | Usa opción múltiple o abierta |
-| Bloquear el video hasta responder | El video se pausa y aparece la pregunta, pero el estudiante puede reanudarlo sin contestar | Indica en las instrucciones que deben responder antes de continuar |
 | Alertas antifraude | El panel existe, pero el examen no detecta el cambio de pestaña | Supervisa presencialmente |
 | Validación de importación | No previsualiza ni detalla errores | Importa en lotes pequeños |
 | Vista "Mis intentos" del estudiante | No existe | El estudiante ve su resultado al enviar |

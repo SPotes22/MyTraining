@@ -64,7 +64,7 @@ Y ya, entras a `http://127.0.0.1:5000`. En desarrollo (`APP_ENV=development`, el
 ### Correr las pruebas
 
 ```bash
-pytest          # 82 tests
+pytest          # 88 tests
 ```
 
 ## 🚀 Pre-producción

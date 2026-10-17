@@ -67,7 +67,7 @@ La base queda en `instance/database.db`: las rutas `sqlite:///` relativas se res
 
 | Tarea | Comando |
 |---|---|
-| Todos los tests | `pytest` (82 tests, ~45 s) |
+| Todos los tests | `pytest` (88 tests, ~50 s) |
 | Un archivo / un test | `pytest tests/test_preproduction_hardening.py -k socket -s` |
 | Arrancar como pre-producción en local | `APP_ENV=preproduction SESSION_COOKIE_SECURE=0 SECRET_KEY=$(python -c 'import secrets;print(secrets.token_hex(32))') SUPERUSER_PASSWORD="$(python -c 'import secrets;print(secrets.token_urlsafe(16))')" gunicorn -c gunicorn.conf.py wsgi:app` |
 | Salud | `curl localhost:8080/healthz` |
@@ -210,6 +210,8 @@ Cierre: POST /instructor/session/<id>/finish | /exam/close/<id> | expected_stude
 | En vivo | `services/exam_content.py:grade_answer` | Cada `answer_submitted` (feedback inmediato) | **Solo** opción múltiple, V/F y video; el resto siempre es "incorrecta" en vivo |
 | Final | `blueprints/exams/routes.py:submit_exam` | Al enviar el examen | Todos los tipos; la nota que se guarda |
 
+**Preguntas pendientes (RN-14):** "respondida" se define en dos sitios que deben coincidir: `isStepAnswered` (JS, `presentar_examen.html`) y `unanswered_question_ids` (servidor, `exams/routes.py`). Si agregas un tipo de pregunta, actualiza ambos.
+
 Si cambias reglas de calificación, **cambia los dos** o el feedback en vivo contradirá la nota final. Ambos usan **el banco vivo**, no la instantánea (§8).
 
 ### 4.3 Estado en memoria y persistencia
@@ -258,6 +260,7 @@ Toca **todos** estos puntos; si falta uno, el tipo se guarda pero no se presenta
 | Serialización para sockets | `services/exam_content.py:serialize_question` |
 | Presentación | `templates/presentar_examen.html` (HTML y JS) y `presentar_examen` en `exams/routes.py` |
 | Calificación final | `exams/routes.py:submit_exam` |
+| Pendientes (RN-14) | `isStepAnswered` en `presentar_examen.html` y `unanswered_question_ids` en `exams/routes.py` |
 | Calificación en vivo | `services/exam_content.py:grade_answer` |
 | Reporte | `templates/session_report.html` |
 | Importación | `questions/routes.py:import_questions_excel` |
@@ -342,6 +345,7 @@ Para cambiarlo: los tiempos y la validación están en `services/video_cues.py`;
 | `test_socrative_module.py` | Constructor, bancos, clases, papelera, autorización de salas |
 | `test_session_report_and_snapshots.py` | Instantáneas e integridad del reporte |
 | `test_remediation_service.py` | Curso de refuerzo y no duplicación |
+| `test_pending_questions.py` | RN-14: envío rechazado con pendientes (incluidas preguntas de video no vistas), respuestas guardadas por socket, excepción del modo guiado |
 | `test_video_cues.py` | RF-011: tiempos y URLs de video, entrega diferida de preguntas, cues en capacitaciones, permisos del editor de capacitaciones |
 | `test_preproduction_hardening.py` | Seguridad y reglas: IDOR, sockets, CSRF, bloqueo de login, RN-09, RN-10, RN-12, RN-13, borrado de profesores, `validate_config`, `/healthz` |
 
@@ -382,7 +386,6 @@ def app_ctx(tmp_path):
 | `ensure_schema` en vez de Alembic | Solo agrega columnas | Bloquea la migración limpia a PostgreSQL | RNF-13 |
 | Llaves foráneas no aplicadas en SQLite | Borrados que en PostgreSQL fallarían | Probar contra PostgreSQL antes de migrar | I-12 |
 | SQLite reutiliza ids | El último id borrado se reasigna | Herencia de datos si se borra un usuario con contenido (ya bloqueado en el panel) | Auditoría S-16 |
-| Video sin bloqueo al responder | `video_cues.js` pausa el video en el cue, pero no impide reanudarlo sin responder | RN-02 y CA-03 parciales | SRS §7 |
 | Desbloqueo de preguntas de video por tiempo de reloj | El servidor mide el tiempo desde que se abrió la página, no la reproducción real; con la tolerancia de 3 s, un estudiante que espera sin reproducir también recibe la pregunta | Aceptado: evita leerla antes, no garantiza haber visto el video | `CUE_UNLOCK_TOLERANCE_SECONDS` |
 | `exams/events.py` | Código muerto que referencia un `socketio` inexistente | Confusión | Borrar en una limpieza |
 | Alertas antifraude | Existe el handler `anti_cheat_alert`, pero ningún cliente lo emite | El panel del lobby queda vacío | RF-018 |
