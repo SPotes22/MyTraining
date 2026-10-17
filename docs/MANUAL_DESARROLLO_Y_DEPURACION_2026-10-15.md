@@ -39,7 +39,12 @@
 | I-10 | **No versiones datos de usuario**: `app/static/uploads/`, `*.db`, `.env` | Fuga de datos | `.gitignore` |
 | I-11 | **Nada de secretos por defecto fuera de desarrollo.** Si agregas un secreto, exígelo en `validate_config`; si un valor llegó a publicarse, agrega su SHA-256 a `LEAKED_SECRET_SHA256` | `validate_config` bloquea el arranque inseguro | `app/config.py` |
 | I-13 | **Ningún secreto literal en el repositorio**: ni contraseñas de ejemplo en código, tests, `env.example` o documentación. Usa marcadores (`<CLAVE>`), valores generados (`secrets.token_urlsafe`) o hashes, como `LEAKED_SECRET_SHA256` | GitGuardian marcó usuario + contraseña fijos en `app/__init__.py` y en un test (incidentes del 16 oct 2026). En tests usa `TEST_PASSWORD` de `tests/support.py` | Todo el repo |
-| I-12 | **Código portable a PostgreSQL**: nada de SQL específico de SQLite fuera de `extensions.py` y `ensure_schema`; respeta las llaves foráneas aunque SQLite no las aplique | La migración prevista debe ser un cambio de `DATABASE_URL` | Modelos y servicios |
+| I-12 | **Código portable a PostgreSQL**: nada de SQL específico de SQLite fuera de `extensions.py` y `ensure_schema`; respeta las llaves foráneas aunque SQLite no las aplique; compara ids con enteros, no con texto del formulario (`getlist(..., type=int)`) | La migración prevista debe ser un cambio de `DATABASE_URL`. El job de CI con PostgreSQL lo verifica | Modelos y servicios |
+| I-15 | **Todo cambio de modelo trae su migración** (`flask --app run db migrate`, §5.5). No edites una migración ya publicada: crea otra | `tests/test_migrations.py` falla si el modelo y las migraciones no coinciden | `migrations/versions/` |
+| I-16 | **Logs con `logging`, nunca `print`**, y personas solo por id (sin correos, nombres ni tokens) | RNF-17; un test falla si aparece un `print` nuevo en `app/` | `app/logging_setup.py` |
+| I-17 | **Las escrituras concurrentes pesadas pasan por `write_lock`** (`@serialize_on_sqlite` o `with sqlite_write_lock()`) | Con SQLite, varios hilos escribiendo a la vez se estorban (Auditoría §4.1). Solo es válido con 1 worker (I-1) | `app/services/write_lock.py` |
+| I-18 | **Subidas solo con `app/services/uploads.py`** (lista blanca, firma del contenido, tope por tipo, nombre aleatorio) | RNF-07; nunca guardes `request.files[...]` directamente | `learning/routes.py` |
+| I-19 | **Todo `socketio.emit` lleva destinatario** (`to=`): sala, `teacher_<id>` o un `sid` | Un emit sin destinatario llega a todos los conectados (Auditoría S-22) | Sockets y rutas |
 
 ---
 
@@ -67,11 +72,16 @@ La base queda en `instance/database.db`: las rutas `sqlite:///` relativas se res
 
 | Tarea | Comando |
 |---|---|
-| Todos los tests | `pytest` (116 tests, ~70 s) |
+| Todos los tests | `pytest` (176 tests, ~2 min) |
+| Cobertura (CI exige ≥ 70 % en blueprints y services) | `pytest --cov=app/blueprints --cov=app/services --cov-report=term-missing` |
+| Tests contra PostgreSQL | `TEST_DATABASE_URL=postgresql+psycopg://usuario@localhost/mytraining_test pytest` (la base se vacía en cada test) |
+| Nueva migración | `flask --app run db migrate -m "qué cambia"`, revisar el archivo en `migrations/versions/` |
+| Simulacro de restauración | `python scripts/restore_drill.py backups/ --compare instance/database.db` |
+| Accesibilidad | `scripts/a11y/` (axe-core + recorrido con teclado; instrucciones en la cabecera de cada script) |
 | Un archivo / un test | `pytest tests/test_preproduction_hardening.py -k socket -s` |
 | Arrancar como pre-producción en local | `APP_ENV=preproduction SESSION_COOKIE_SECURE=0 SECRET_KEY=$(python -c 'import secrets;print(secrets.token_hex(32))') SUPERUSER_PASSWORD="$(python -c 'import secrets;print(secrets.token_urlsafe(16))')" gunicorn -c gunicorn.conf.py wsgi:app` |
 | Salud | `curl localhost:8080/healthz` |
-| Prueba de carga | `scripts/loadtest/` (instrucciones en la Auditoría §6) |
+| Pruebas de carga | `scripts/loadtest/`: `submit_burst.py` (envíos) y `room_events.py` (eventos de sala). Instrucciones en la Auditoría §6; requieren `LOADTEST_PASSWORD` |
 | Respaldo | `python scripts/backup_sqlite.py instance/database.db backups/` |
 | Consola con la app cargada | `python -i -c "from app import create_app; from app.extensions import db; from app.models import *; app=create_app(); ctx=app.app_context(); ctx.push()"` |
 
@@ -124,15 +134,18 @@ ggshield auth login                   # o: export GITGUARDIAN_API_KEY=<CLAVE>
 ```
 run.py                 Servidor de desarrollo (debug solo con APP_ENV=development)
 wsgi.py                Entrada de gunicorn
-gunicorn.conf.py       1 worker gthread, 64 hilos, timeout 0 (websockets)
+gunicorn.conf.py       1 worker gthread, 256 hilos (= tope de conexiones en vivo), timeout 0,
+                       logs JSON redactados
 Dockerfile             Imagen pre-producción (python:3.13-slim, usuario 10001, /data)
 app/
-  __init__.py          create_app(): config → validate_config → ProxyFix → db/csrf/login
-                       → import sockets → socketio.init_app → init_db → blueprints
+  __init__.py          create_app(): config → logs → validate_config → ProxyFix → db/migrate/csrf/login
+                       → import sockets → socketio.init_app → init_db (migrate_schema) → blueprints
                        → cabeceras de seguridad, errores 413 y CSRF, /healthz
-                       ensure_schema(): ALTER TABLE ADD COLUMN para bases antiguas
+                       migrate_schema(): aplica migraciones; adopta bases anteriores a Alembic
+                       ensure_schema(): solo para esas bases antiguas
+  logging_setup.py     RNF-17: logs JSON, redacción de correos/tokens, logger de Gunicorn
   config.py            Config por entorno (APP_ENV), límites, validate_config()
-  extensions.py        db, login_manager, socketio, csrf + PRAGMAs de SQLite (WAL)
+  extensions.py        db, migrate, login_manager, socketio, csrf + PRAGMAs de SQLite (WAL)
   models.py            Todos los modelos (ver SAD §7)
   blueprints/
     auth/              /, /login, /register, /logout, /student/join; bloqueo de login
@@ -162,14 +175,18 @@ app/
     mailer.py          SMTP (MAIL_*); sin servidor imprime en consola en desarrollo
     password_reset.py  RF-028: token firmado de un solo uso (ligado al hash de la contraseña)
     personal_data.py   RF-029: exportar y anonimizar los datos de un usuario
+    uploads.py         RNF-07: validar y guardar archivos subidos (firma, tope por tipo)
+    write_lock.py      RNF-08: candado de escritura del proceso cuando la base es SQLite
     video_cues.py      RF-011: URL → proveedor (YouTube/Vimeo/archivo) y validación de esquema,
                        metadatos JSON del cue (questions.video_metadata), tiempos mm:ss,
                        desbloqueo en servidor (cue_wait_seconds) y cues de bloques de video
   templates/           Jinja2; base.html = diseño + inyección CSRF + navegación por rol
   static/js/           instructor_lobby.js, learning_builder.js, learning_student.js,
                        video_cues.js (sigue la reproducción y revela/pide la pregunta en su minuto)
-scripts/               backup_sqlite.py, loadtest/
-tests/                 pytest (ver §7)
+migrations/            Alembic (Flask-Migrate): env.py y versions/ (0001 = esquema base)
+scripts/               backup_sqlite.py, restore_drill.py, loadtest/ (envíos y eventos de sala),
+                       a11y/ (axe-core y teclado)
+tests/                 pytest (ver §7); conftest.py redirige a TEST_DATABASE_URL si existe
 docs/                  SRS, SAD, Auditoría, manuales
 ```
 
@@ -279,14 +296,14 @@ Toca **todos** estos puntos; si falta uno, el tipo se guarda pero no se presenta
 3. Agrega la `<option>` en el select **Modo de Evaluación** de `exam_builder.html`.
 4. Un nombre desconocido cae en `instant_feedback` (`registry.get`).
 
-### 5.5 Agregar una columna a un modelo
+### 5.5 Agregar una columna o una tabla (migraciones)
 
-Mientras no exista Alembic:
-
-1. Agrega el `db.Column` en `models.py`.
-2. Agrega una línea `_add_column_if_missing(conn, <cols>, '<tabla>', '<columna>', '<DDL>')` en `ensure_schema()`. Las bases existentes no se recrean.
-3. Usa DDL portable (`INTEGER`, `VARCHAR(n)`, `TEXT`, `FLOAT`, `BOOLEAN DEFAULT 0`) y no `NOT NULL` sin default.
-4. Una tabla nueva la crea sola `db.create_all()`. Impórtala en `init_db` si no se importa en otro lado.
+1. Cambia el modelo en `models.py`.
+2. Genera la migración con una base al día: `flask --app run db migrate -m "agrega X a Y"`.
+3. **Revisa el archivo generado** en `migrations/versions/`. Alembic no detecta renombres (los ve como borrar + crear: perderías datos) y en SQLite usa `batch_alter_table`. Una columna `NOT NULL` en una tabla con datos necesita `server_default`.
+4. `pytest` (incluye `test_migrations.py`, que compara modelos y migraciones) y, si puedes, con `TEST_DATABASE_URL` de PostgreSQL. El CI corre ambos.
+5. La app aplica la migración al arrancar; no hace falta ningún paso manual en el servidor.
+6. No toques `ensure_schema()`: solo sirve para adoptar bases creadas antes del 17 de octubre de 2026.
 
 ### 5.6 Agregar una variable de configuración
 
@@ -338,7 +355,12 @@ db.session.commit()
 | Un POST redirige con "La página caducó…" | Falta el token CSRF | La plantilla debe extender `base.html`; los clientes externos mandan `X-CSRFToken`; en tests, `WTF_CSRF_ENABLED=False` o token real |
 | Test de login devuelve 429 inesperado | El bloqueo en memoria persiste entre tests | `auth_routes._failed_logins.clear()` en el fixture |
 | Un test ve salas de otro test | `session_manager` es global | `session_manager.sessions.pop(code, None)` al final |
-| `database is locked` | Más escrituras simultáneas de las que aguanta un proceso | Ver Auditoría §4. Con WAL y `busy_timeout=30000` no debería aparecer bajo carga normal |
+| `database is locked` | Más escrituras simultáneas de las que aguanta un proceso | Ver Auditoría §4. Con WAL, `busy_timeout=30000` y `write_lock` no debería aparecer bajo carga normal; si una escritura nueva y frecuente lo provoca, envuélvela con `sqlite_write_lock()` (I-17) |
+| Estudiantes que no logran conectarse con salas grandes | Más websockets que `GUNICORN_THREADS` | Cada conexión ocupa un hilo; sube `GUNICORN_THREADS`, nunca `workers` |
+| El profesor ve la lista de estudiantes con medio segundo de atraso | Es a propósito: la lista se agrupa cada 0,5 s por sala | `STUDENTS_THROTTLE_SECONDS` en `realtime/sockets.py` |
+| Error 500 solo en PostgreSQL (`operator does not exist: integer = character varying`) | Se comparó un id con texto del formulario | `request.form.getlist(..., type=int)` (I-12) |
+| `test_models_match_migrations` falla | Cambiaste un modelo sin migración | §5.5 |
+| Una subida válida se rechaza por "contenido no corresponde" | Tipo nuevo sin firma en `uploads._matches_signature` | Agrega la extensión a `KINDS` y su firma |
 | La app no arranca: `Configuración insegura…` | `APP_ENV` ≠ development con secretos de ejemplo | `validate_config`; para pruebas locales usa `APP_ENV=development` |
 | El login no persiste en local con gunicorn | Cookie `Secure` sobre http | `SESSION_COOKIE_SECURE=0` en local |
 | Un reporte no lista una sala finalizada | Grafía de estado no contemplada | §4.4 |
@@ -349,7 +371,7 @@ db.session.commit()
 
 **Herramientas útiles:**
 
-- Logs de sala: el código usa `print` con prefijos `[JOIN]`, `[START]`, `[PAUSE]`, `[ALERT]`, `[WARN]`, `[ERROR]`. Fíltralos con `docker logs mytraining 2>&1 | grep '\[WARN\]'`.
+- Logs: JSON por línea con `event` (`room.student_join`, `room.pause`, `room.anti_cheat`, `mail.error`…). Fíltralos con `docker logs mytraining 2>&1 | jq 'select(.level=="ERROR")'`. En local, `LOG_FORMAT=text` y `LOG_LEVEL=debug` (incluye cada respuesta en vivo). Para registrar algo: `log = logging.getLogger(__name__)` y `log.info('Mensaje', extra={'event': 'area.accion', 'user_id': ...})`.
 - Inspeccionar una sala en memoria (consola, §2.2): `from app.realtime.manager import session_manager; session_manager.sessions['ABC123'].__dict__`.
 - Respuestas guardadas: `LiveAnswer.query.filter_by(session_id=..., student_id=...).all()`.
 
@@ -372,6 +394,17 @@ db.session.commit()
 | `test_pending_questions.py` | RN-14: envío rechazado con pendientes (incluidas preguntas de video no vistas), respuestas guardadas por socket, excepción del modo guiado |
 | `test_video_cues.py` | RF-011: tiempos y URLs de video, entrega diferida de preguntas, cues en capacitaciones, permisos del editor de capacitaciones |
 | `test_preproduction_hardening.py` | Seguridad y reglas: IDOR, sockets, CSRF, bloqueo de login, RN-09, RN-10, RN-12, RN-13, borrado de profesores, `validate_config`, `/healthz` |
+| `test_question_bank.py` | Bancos y preguntas de cada tipo, filtros, importación CSV, redirección abierta, acceso cruzado |
+| `test_polls.py` | Encuestas: votos, cierre, sala propia, privacidad de respuestas abiertas |
+| `test_learning.py` | Capacitaciones: editor, publicar, duplicar, exportar/importar, cursos no publicados, calificación de bloques (incluido `fill_blank`), actividad solo al autor |
+| `test_mailer.py` | Envío SMTP con un servidor falso, sin red |
+| `test_logging.py` | RNF-17: formato JSON, redacción, sin `print` nuevos |
+| `test_uploads.py` | RNF-07: firma, tope por tipo, portada solo imagen |
+| `test_submit_performance.py` | RNF-08: número de consultas del envío, opción de otra pregunta, doble envío |
+| `test_room_throttle.py` | RNF-09: agrupación de la lista de estudiantes; hilos de Gunicorn |
+| `test_migrations.py` | RNF-13: base nueva por migraciones, modelos = migraciones, adopción de bases antiguas |
+| `test_restore_drill.py` | RNF-15: simulacro correcto, respaldo viejo, corrupto, ausente o incompleto |
+| `conftest.py` | Con `TEST_DATABASE_URL`, toda la suite contra ese motor; marca `sqlite_only` |
 
 ### 7.2 Patrón de fixture
 
@@ -387,9 +420,13 @@ def app_ctx(tmp_path):
         yield app, ...
 ```
 
+Si el test usa helpers que abren su propio `app_context` para escribir, haz el `yield` **fuera** del `with`: con el contexto del fixture abierto, SQLite (WAL) puede servirle a las peticiones una foto vieja de la base (ver `tests/test_learning.py`).
+
 - **Contraseñas de test con 8 caracteres o más.**
 - Para probar CSRF, actívalo en el test y toma el token del `<meta name="csrf-token">` de cualquier página.
 - Sockets: `socketio.test_client(app, flask_test_client=client)` después de hacer login con `client`.
+- Si el test lee un archivo SQLite directamente, márcalo `@pytest.mark.sqlite_only` (se omite contra PostgreSQL).
+- Datos de prueba con llaves foráneas reales (una `StudentAnswer` apunta a una `Question` existente): SQLite no lo revisa, PostgreSQL sí.
 
 ### 7.3 Qué debe tener todo cambio
 
@@ -405,19 +442,19 @@ def app_ctx(tmp_path):
 |---|---|---|---|
 | Calificación sobre el banco vivo | `submit_exam` y `grade_answer` leen `Question`/`QuestionOption` actuales, no la instantánea | Editar la clave con la sala abierta cambia la nota de los envíos posteriores | RF-019 / RN-06 (Parcial) |
 | Dos caminos de calificación | §4.2 | Inconsistencias en el feedback en vivo | — |
-| `submit_exam` lento | Una consulta por opción y llamada a instantáneas en cada envío | Tope de ~25 envíos/s; optimizarlo es la mejora más barata de capacidad | Auditoría §5 |
 | Estados con varias grafías | §4.4 | Filtros incompletos | SRS §12 |
-| `ensure_schema` en vez de Alembic | Solo agrega columnas | Bloquea la migración limpia a PostgreSQL | RNF-13 |
-| Llaves foráneas no aplicadas en SQLite | Borrados que en PostgreSQL fallarían | Probar contra PostgreSQL antes de migrar | I-12 |
+| Llaves foráneas no aplicadas en SQLite | Borrados que en PostgreSQL fallarían | El job de CI con PostgreSQL lo detecta; corre `TEST_DATABASE_URL=… pytest` antes de cambios de modelo | I-12 |
 | SQLite reutiliza ids | El último id borrado se reasigna | Herencia de datos si se borra un usuario con contenido (ya bloqueado en el panel) | Auditoría S-16 |
 | Desbloqueo de preguntas de video por tiempo de reloj | El servidor mide el tiempo desde que se abrió la página, no la reproducción real; con la tolerancia de 3 s, un estudiante que espera sin reproducir también recibe la pregunta | Aceptado: evita leerla antes, no garantiza haber visto el video | `CUE_UNLOCK_TOLERANCE_SECONDS` |
 | `exams/events.py` | Código muerto que referencia un `socketio` inexistente | Confusión | Borrar en una limpieza |
 | Alertas antifraude | Existe el handler `anti_cheat_alert`, pero ningún cliente lo emite | El panel del lobby queda vacío | RF-018 |
 | `PASSING_SCORE = 40` fijo | No usa `exam.passing_score` | Umbrales inconsistentes | RN-07 |
 | Invitados sin limpieza | Cada `/student/join` crea un `User` | Crecimiento de la tabla; requisito legal RL-10 | — |
-| Logging con `print` | Sin niveles ni estructura | RNF-17 | — |
 | Bloqueo de login y salas en memoria | No sobreviven a reinicios y no escalan a varios workers | Llevarlos a Redis en producción | RNF-06, RNF-14 |
 | CDN externos | Bootstrap y Socket.IO cliente se cargan de jsDelivr / cdn.socket.io | Dependencia externa y bloqueo de una futura CSP | — |
+| Etiquetas sin `for` | ~100 `<label class="form-label">` se asocian a su campo con un script en `base.html` | Funciona, pero en plantillas nuevas usa `for`/`id` | RNF-11 |
+| Compatibilidad | Solo probado en Chromium | Matriz manual pendiente: Firefox, Edge y Safari (últimas 2 versiones) en login, examen (todos los tipos), resultados y editor de capacitaciones | RNF-12 |
+| Fill-blank sin interfaz | El servidor califica `fill_blank` en capacitaciones, pero `learning_student.js` no lo dibuja | Tipo incompleto | — |
 
 ---
 
@@ -438,7 +475,8 @@ def app_ctx(tmp_path):
 **Antes de hacer commit:**
 
 - [ ] `pytest` en verde, con tests nuevos para lo cambiado (incluido el acceso cruzado).
-- [ ] Para cambios de JS, CSRF o sockets: verificación en navegador real (§2.3).
+- [ ] Para cambios de JS, CSRF o sockets: verificación en navegador real (§2.3). Para cambios de plantillas o colores: `scripts/a11y/axe_audit.js` sin violaciones.
+- [ ] Si cambiaste un modelo: migración nueva revisada (§5.5).
 - [ ] Sin archivos de `uploads/`, `.db` ni `.env` en el commit, ni secretos literales; el hook de ggshield (§2.4) pasa, o el CI lo revisará si no hay clave local.
 - [ ] Si cerraste o cambiaste un requisito, actualiza su estado en el SRS (y los conteos de §1.6).
 - [ ] Si cambiaste un límite, una variable o el despliegue, actualiza el Manual de administrador y `env.example`.

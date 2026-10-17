@@ -35,7 +35,7 @@
 
 - Mínimo **8 caracteres**.
 - Tras **5 intentos fallidos** el inicio de sesión se bloquea **15 minutos**. Espera y vuelve a intentar, o pide ayuda al administrador.
-- **¿La olvidaste?** En *Iniciar Sesión* pulsa **¿Olvidaste tu contraseña?**, escribe tu correo y abre el enlace que te llega. El enlace vale **30 minutos** y sirve **una sola vez**. Si no llega, revisa la carpeta de spam. Las cuentas de invitado (ingreso solo con nombre y código) no tienen contraseña ni se pueden recuperar.
+- **¿La olvidaste?** En *Iniciar Sesión* pulsa **¿Olvidaste tu contraseña?** (debajo del campo de contraseña), escribe tu correo y abre el enlace que te llega. El enlace vale **30 minutos** y sirve **una sola vez**. Si no llega, revisa la carpeta de spam. Las cuentas de invitado (ingreso solo con nombre y código) no tienen contraseña ni se pueden recuperar.
 - Para cambiarla estando dentro, ve a **Mi perfil y mis datos** (§1.5).
 
 ### 1.4 Si ves "La página caducó o el formulario no es válido"
@@ -211,7 +211,7 @@ Ordena las capas de abajo hacia arriba,ordering,Redes,,,
    - **Siguiente Pregunta:** solo en modo *Guiado por Profesor*.
    - **Finalizar:** cierra la sala; nadie más puede entrar ni enviar.
 
-> **Tamaño de sala recomendado en esta fase:** hasta 100 estudiantes conectados. Si más de ~45 envían en el mismo segundo, los envíos tardan más de 2 s (no se pierden). Ver el [SRS §10](SRS_2026-10-15.md#10-límites-de-la-fase-pre-producción).
+> **Tamaño de sala recomendado en esta fase:** hasta 100 estudiantes, aunque todos envíen en el mismo segundo (la confirmación llega en menos de 2 s). Entre todas las salas abiertas caben unos 220 estudiantes conectados a la vez. Ver el [SRS §10](SRS_2026-10-15.md#10-límites-de-la-fase-pre-producción).
 
 > **Finaliza solo cuando todos hayan enviado.** Tras finalizar, los envíos se rechazan.
 
@@ -241,7 +241,7 @@ Las clases son **carpetas** para organizar exámenes por grupo o asignatura:
 1. **Nueva Capacitación**: nombre, descripción y portada opcional.
 2. **Abrir Editor de Bloques** para construir la **Estructura del Curso**: módulos → lecciones → bloques.
 3. **Agregar Bloque** → *Seleccionar Tipo de Bloque*: título, texto, imagen, video, pregunta, separador, cita, PDF, descarga, audio o embebido. Cada bloque se configura en *Configurar Bloque*; puedes duplicarlo, reordenarlo u ocultarlo.
-4. Los archivos se suben desde el bloque (máximo **50 MB**). Para videos largos usa YouTube o Vimeo.
+4. Los archivos se suben desde el bloque. Máximos: **imágenes 10 MB**, **video 200 MB**, audio y PDF 20 MB. La portada de la capacitación debe ser una imagen. Para videos largos usa YouTube o Vimeo.
 5. **Vista Previa / Previsualizar** muestra el curso como lo verá el estudiante.
 6. Cambia el estado a **publicado** para que aparezca en *Mis cursos*. En borrador solo lo ves tú.
 7. **Exportar** descarga el curso completo en JSON; **Importar (JSON)** lo trae a tu cuenta. Sirve para copiar cursos entre plataformas. Las preguntas dentro de videos se conservan al duplicar o importar.
@@ -302,7 +302,11 @@ Conviene saberlo antes de usarla con nota real:
 
 **No me deja borrar definitivamente un examen.** Ya tiene intentos; queda archivado en *Eliminados* para proteger el historial.
 
-**Subí un archivo y dice "Archivo demasiado grande".** El límite es 50 MB. Comprime el archivo o usa YouTube/Vimeo para el video.
+**Subí un archivo y dice "Archivo demasiado grande".** Los límites son 10 MB para imágenes, 200 MB para video y 20 MB para audio y PDF; para importar preguntas o capacitaciones, 5 MB. Comprime el archivo o usa YouTube/Vimeo para el video.
+
+**Dice "El contenido del archivo no corresponde a su extensión".** El archivo fue renombrado (por ejemplo, una imagen `.webp` con nombre `.png`). Guárdalo de nuevo en el formato correcto desde el programa de edición.
+
+**¿Se puede usar con teclado o lector de pantalla?** Sí: login, examen, resultados y perfil se recorren con Tab y las flechas (para elegir opción), con el foco siempre visible. Los colores cumplen el contraste mínimo de WCAG 2.1 AA.
 
 **Me salió "Demasiados intentos fallidos".** Espera 15 minutos, o usa **¿Olvidaste tu contraseña?**: al crear una nueva se levanta el bloqueo.
 

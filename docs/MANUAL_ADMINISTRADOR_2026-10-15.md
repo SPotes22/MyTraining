@@ -80,7 +80,7 @@ server {
     server_name capacitacion.tu-dominio.com;
     # ssl_certificate / ssl_certificate_key (por ejemplo con certbot)
 
-    client_max_body_size 50m;          # igual a MAX_UPLOAD_MB; el default de Nginx (1 MB) rompe las subidas
+    client_max_body_size 201m;         # igual a MAX_UPLOAD_MB; el default de Nginx (1 MB) rompe las subidas
 
     location / {
         proxy_pass http://127.0.0.1:8080;
@@ -111,11 +111,14 @@ Lista completa con comentarios en [`env.example`](../env.example).
 | `PROXY_FIX_HOPS` | No | `1` | Número de proxies delante de la app |
 | `ALLOW_INSTRUCTOR_SIGNUP` | No | `false` | `true` permite que cualquiera se registre como profesor |
 | `SESSION_COOKIE_SECURE` | No | `true` | Ponlo en `false` **solo** para pruebas locales sin HTTPS |
-| `MAX_UPLOAD_MB` | No | `50` | Tamaño máximo por archivo (ajusta también Nginx) |
+| `MAX_UPLOAD_MB` | No | `201` | Tope por petición; debe cubrir el mayor de los de abajo (ajusta también Nginx) |
+| `UPLOAD_IMAGE_MB` / `UPLOAD_VIDEO_MB` / `UPLOAD_AUDIO_MB` / `UPLOAD_DOCUMENT_MB` / `UPLOAD_IMPORT_MB` | No | `10` / `200` / `20` / `20` / `5` | Tope por tipo de archivo (importación = CSV, Excel y JSON) |
 | `MIN_PASSWORD_LENGTH` | No | `8` | Contraseña mínima |
 | `LOGIN_MAX_ATTEMPTS` / `LOGIN_LOCKOUT_SECONDS` | No | `5` / `900` | Bloqueo por intentos fallidos |
 | `SOCKETIO_CORS_ORIGINS` | No | vacío | Solo si el frontend se sirve desde otro dominio |
-| `GUNICORN_THREADS` | No | `64` | Hilos del único worker |
+| `GUNICORN_THREADS` | No | `256` | Hilos del único worker. **Es el tope de estudiantes conectados a la vez** (cada conexión en vivo ocupa uno) más ~30 para páginas |
+| `LOG_LEVEL` | No | `info` | `debug`, `info`, `warning` o `error` (app y Gunicorn) |
+| `LOG_FORMAT` | No | `json` | `json` (una línea por evento, para Cloud Logging) o `text` |
 | `SUPERUSER_RESET_ON_BOOT` | No | `false` | `true` reescribe la clave del superusuario desde el entorno en cada arranque (§4.4) |
 | `SEED_DEMO_DATA` | No | `false` | Crea un profesor y un examen de demostración |
 | `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USE_TLS`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM` | **Sí, para recuperar contraseñas** | Los de tu proveedor SMTP | Correo de "¿Olvidaste tu contraseña?". Sin `MAIL_SERVER` no se envía nada y queda una advertencia en el log. `MAIL_PASSWORD` va en el gestor de secretos |
@@ -211,7 +214,16 @@ curl -s localhost:8080/healthz
 
 > Borra los archivos `-wal` y `-shm` al restaurar; si no, SQLite intentaría aplicar cambios de la base anterior.
 
-**Simulacro:** restaura un respaldo en una VM de prueba **cada trimestre** (requisito RNF-15). Un respaldo que nunca se restauró no está probado.
+### 5.3 Simulacro de restauración automático (semanal)
+
+Un respaldo que nunca se restauró no está probado. `scripts/restore_drill.py` toma el último respaldo, lo copia aparte (no toca la base real), revisa su integridad, arranca la app contra la copia, pide `/healthz` y compara el número de filas con la base viva. Falla si algo no cuadra **o si el respaldo más reciente tiene más de 26 horas** (así te enteras de que el respaldo diario dejó de correr).
+
+```bash
+# crontab -e en la VM (domingos a las 04:10)
+10 4 * * 0 docker exec mytraining python scripts/restore_drill.py /data/backups --compare /data/mytraining.db >> /var/log/mytraining-drill.log 2>&1 || echo "Falló el simulacro de restauración" | mail -s "MyTraining: simulacro fallido" <CORREO_ADMIN>
+```
+
+La salida es un JSON con `"ok": true` y el tiempo que tomó (`segundos`). Si falla, el campo `error` dice por qué. Una vez por trimestre conviene además una restauración completa en una VM de prueba (§5.2), incluyendo los archivos subidos.
 
 ---
 
@@ -220,8 +232,8 @@ curl -s localhost:8080/healthz
 | Qué | Cómo |
 |---|---|
 | Disponibilidad | Chequeo de disponibilidad de GCP (*Uptime check*) contra `https://<dominio>/healthz`, cada minuto, con alerta por correo |
-| Logs | `docker logs -f mytraining` (accesos y errores de Gunicorn) |
-| Eventos de sala | Líneas `[JOIN]`, `[START]`, `[PAUSE]`, `[RESUME]`, `[LEAVE]` y `[ALERT]` en el log |
+| Logs | `docker logs -f mytraining`: una línea JSON por evento (`ts`, `level`, `logger`, `msg`, `event`, `room`, `user_id`). Cloud Logging los indexa solos; filtra, por ejemplo, por `jsonPayload.level="ERROR"`. No contienen correos, nombres ni tokens: las personas aparecen por id |
+| Eventos de sala | Campo `event`: `room.student_join`, `room.start`, `room.pause`, `room.resume`, `room.student_leave`, `room.anti_cheat`. Las respuestas en vivo (`room.answer`) solo salen con `LOG_LEVEL=debug` |
 | Disco | Alerta de GCP al 80 % de uso del disco persistente |
 | Señales de que toca crecer | `database is locked` en los logs; quejas de envíos lentos con salas grandes (§8) |
 | Secretos en el código | Panel de GitGuardian y el job **Secret scan (GitGuardian)** de GitHub Actions (§6.1) |
@@ -253,7 +265,7 @@ docker rm -f mytraining && docker run ...            # mismo comando de §2.2, m
 curl -s localhost:8080/healthz
 ```
 
-Las columnas nuevas de la base se agregan solas al arrancar (`ensure_schema`). Si una actualización falla, vuelve a la versión anterior con `git checkout <commit>`, reconstruye y restaura el respaldo previo (§5.2).
+Los cambios de la base se aplican solos al arrancar (migraciones de Alembic, carpeta `migrations/`); en el log verás `Running upgrade ...`. La primera vez, una base anterior al 17 de octubre se completa y se marca en la revisión `0001` sin recrear nada. Si una actualización falla, vuelve a la versión anterior con `git checkout <commit>`, reconstruye y restaura el respaldo previo (§5.2): las migraciones no se deshacen solas.
 
 ---
 
@@ -261,12 +273,13 @@ Las columnas nuevas de la base se agregan solas al arrancar (`ensure_schema`). S
 
 | Límite | Valor | Qué decir al cliente |
 |---|---|---|
-| Envíos simultáneos por instancia | ~45 en el mismo segundo con respuesta ≤ 2 s | "Salas de hasta 100 estudiantes; si todos envían a la vez, la confirmación puede tardar unos segundos, pero no se pierde" |
+| Envíos simultáneos por instancia | ~100 en el mismo segundo con respuesta ≤ 2 s | "Salas de hasta 100 estudiantes, aunque todos envíen a la vez" |
+| Estudiantes conectados a la vez | ~220 por instancia (`GUNICORN_THREADS=256`) | Sumando todas las salas abiertas |
 | Workers / instancias | 1 / 1 | **Nunca subas `workers` en `gunicorn.conf.py`:** las salas dejarían de funcionar |
-| Archivos | 50 MB | Videos largos en YouTube/Vimeo |
+| Archivos | Imagen 10 MB, video 200 MB, audio y PDF 20 MB | Videos largos en YouTube/Vimeo |
 | Disponibilidad | ~99 % mensual | Mantenimientos fuera de horario |
 
-**Cuándo pasar a PostgreSQL + Redis + varias instancias:** cuando se cumpla cualquiera de los disparadores del [SAD §12.3](SAD_2026-10-15.md#123-disparadores-para-pasar-a-producción): salas que necesiten más de ~45 envíos simultáneos, un contrato con SLA ≥ 99,5 %, errores `database is locked`, o ingresos que cubran al menos 3 veces el costo mensual nuevo.
+**Cuándo pasar a PostgreSQL + Redis + varias instancias:** cuando se cumpla cualquiera de los disparadores del [SAD §12.3](SAD_2026-10-15.md#123-disparadores-para-pasar-a-producción): salas que necesiten más de ~100 envíos simultáneos o más de ~220 estudiantes conectados, un contrato con SLA ≥ 99,5 %, errores `database is locked`, o ingresos que cubran al menos 3 veces el costo mensual nuevo.
 
 ---
 
@@ -279,8 +292,10 @@ Las columnas nuevas de la base se agregan solas al arrancar (`ensure_schema`). S
 | "Demasiados intentos fallidos" (429) | 5 fallos en 15 min | Esperar. Reiniciar el contenedor también limpia el bloqueo |
 | Las salas no se actualizan en vivo / el estudiante no ve "Conectado a la sala" | El proxy no reenvía `Upgrade`/`Connection` o `X-Forwarded-Proto` | Revisa la configuración de §2.3 |
 | "La página caducó o el formulario no es válido" | Token CSRF ausente o sesión expirada; o la `SECRET_KEY` cambió | Recargar la página. Si le pasa a todos tras un despliegue, revisa que la `SECRET_KEY` sea la misma |
-| Error 413 o "Archivo demasiado grande" | Archivo > `MAX_UPLOAD_MB`, o Nginx con `client_max_body_size` menor | Ajusta ambos valores |
-| La subida falla sin mensaje de la app | Nginx corta en 1 MB por defecto | `client_max_body_size 50m;` |
+| Error 413 o "Archivo demasiado grande" | Archivo mayor que el tope de su tipo (`UPLOAD_*_MB`), o Nginx con `client_max_body_size` menor que `MAX_UPLOAD_MB` | Ajusta el tope del tipo y, si hace falta, `MAX_UPLOAD_MB` y Nginx |
+| "El contenido del archivo no corresponde a su extensión" | Archivo renombrado (p. ej. un `.webp` guardado como `.png`) | Exportarlo de nuevo en el formato correcto |
+| Estudiantes que no logran conectarse a la sala con muchas personas | Más conexiones que `GUNICORN_THREADS` | Sube `GUNICORN_THREADS` (no `workers`) |
+| La subida falla sin mensaje de la app | Nginx corta en 1 MB por defecto | `client_max_body_size 201m;` |
 | `database is locked` en el log | Más escrituras simultáneas de las que soporta la fase | Revisa §8; es un disparador de migración |
 | `/healthz` responde `db_unavailable` (503) | Disco lleno o volumen no montado | `df -h`; revisa el montaje de `/data` |
 | No se puede borrar un profesor | Tiene contenido (§4.3) | Cámbiale la contraseña |
@@ -295,7 +310,7 @@ Las columnas nuevas de la base se agregan solas al arrancar (`ensure_schema`). S
 - [ ] `APP_ENV=preproduction` y secretos reales guardados en un gestor de secretos
 - [ ] HTTPS funcionando y redirección de `http` a `https`
 - [ ] `/healthz` monitoreado con alerta
-- [ ] Respaldo diario + copia a Cloud Storage + snapshot de disco; **un simulacro de restauración hecho**
+- [ ] Respaldo diario + copia a Cloud Storage + snapshot de disco; **simulacro semanal programado (§5.3) y una restauración completa hecha**
 - [ ] Prueba de carga repetida en la VM real (`scripts/loadtest/`, ver la Auditoría §6) para confirmar el tope de envíos simultáneos
 - [ ] **Política de tratamiento de datos publicada y casilla de autorización** (Ley 1581; SRS §8, RL-01 a RL-03). Validada por un abogado
 - [ ] Decidido si habrá menores de edad (RL-05)
@@ -311,7 +326,11 @@ Las columnas nuevas de la base se agregan solas al arrancar (`ensure_schema`). S
 - [ ] Revisar los logs en busca de `database is locked` o errores 500
 - [ ] Contrastar el uso real con los disparadores de migración (§8)
 
+### Cada semana
+
+- [ ] Revisar que el simulacro automático (§5.3) haya salido `"ok": true`
+
 ### Cada trimestre
 
-- [ ] Simulacro de restauración
+- [ ] Restauración completa en una VM de prueba, con archivos subidos (§5.2)
 - [ ] Actualizar dependencias con parches de seguridad y correr `pytest`

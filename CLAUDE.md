@@ -17,8 +17,11 @@ Plataforma Flask (SSR con Jinja2) + Socket.IO + SQLite para capacitaciones y ex�
 - Hay **dos caminos de calificación** (`grade_answer` en vivo y `submit_exam` final): cambia ambos.
 - Acciones que crean, editan, archivan o borran exámenes, usuarios o resultados: `audit.record(...)` antes del commit (RF-030), sin correos ni nombres en los detalles.
 - "Pregunta respondida" se define en dos sitios que deben coincidir: `isStepAnswered` (JS) y `unanswered_question_ids` (servidor, RN-14).
+- Cambio de modelo = migración nueva (`flask --app run db migrate -m "..."`, revísala); `ensure_schema` es solo para bases antiguas. Ids del formulario como enteros (`getlist(..., type=int)`): el CI también corre en PostgreSQL.
+- Logs con `logging.getLogger(__name__)` y `extra={'event': ...}`, nunca `print`; personas solo por id.
+- Subidas solo con `services/uploads.py`; todo `socketio.emit` con `to=`; escrituras concurrentes frecuentes con `write_lock` (válido por el worker único). Cada websocket ocupa un hilo: `GUNICORN_THREADS` es el tope de conectados.
 
-Comandos: `pip install -r requirements-dev.txt` · `pre-commit install` (escaneo de secretos con ggshield; requiere `GITGUARDIAN_API_KEY`, nunca lo saltes con `--no-verify`) · `pytest` (debe quedar en verde) · `python run.py` (dev).
+Comandos: `pip install -r requirements-dev.txt` · `pre-commit install` (escaneo de secretos con ggshield; requiere `GITGUARDIAN_API_KEY`, nunca lo saltes con `--no-verify`) · `pytest` (debe quedar en verde; el CI exige cobertura ≥ 70 % y corre también en PostgreSQL) · `python run.py` (dev).
 
 Documentación: `docs/SRS_2026-10-15.md` (requisitos y estado) · `docs/SAD_2026-10-15.md` (arquitectura) · `docs/AUDITORIA_PREPRODUCCION.md` (límites medidos) · `docs/MANUAL_ADMINISTRADOR_2026-10-15.md` · `docs/MANUAL_USUARIO_2026-10-15.md`.
 
